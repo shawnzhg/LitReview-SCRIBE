@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "outline_plan/1.0",
+  "title": "OutlinePlan",
+  "type": "object",
+  "required": ["schema_version","task_id","synthesis_graph_hash","sections","budget_remaining","validation","content_hash"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "outline_plan/1.0"},
+    "task_id": {"type": "string"},
+    "synthesis_graph_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "sections": {"type": "array", "items": {
+      "type": "object",
+      "required": ["section_id","title","claim_ids"],
+      "properties": {
+        "section_id": {"type": "string"},
+        "parent_id": {"type": ["string","null"]},
+        "title": {"type": "string"},
+        "objective": {"type": ["string","null"]},
+        "claim_ids": {"type": "array", "items": {"type": "string"}},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "word_budget": {"type": ["integer","null"]},
+        "children": {"type": "array", "items": {"type": "string"}}
+      }}},
+    "precedence_edges": {"type": "array", "items": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}},
+    "coverage_map": {"type": "object"},
+    "unassigned_claims": {"type": "array", "items": {"type": "string"}},
+    "duplicated_claims": {"type": "array", "items": {"type": "string"}},
+    "budget_remaining": {"type": "object"},
+    "validation": {"type": "object"},
+    "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

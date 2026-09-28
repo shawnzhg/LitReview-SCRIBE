@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "synthesis_graph/1.0",
+  "title": "SynthesisGraph",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "evidence_bundle_hash",
+    "claims",
+    "relations",
+    "budget_remaining",
+    "validation",
+    "content_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "synthesis_graph/1.0"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "evidence_bundle_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "role": {
+      "enum": [
+        "reference",
+        "agent"
+      ],
+      "default": "agent"
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "claim_id",
+          "text",
+          "type",
+          "evidence_ids"
+        ],
+        "properties": {
+          "claim_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "study_finding",
+              "cross_study_synthesis",
+              "conflict",
+              "limitation",
+              "gap"
+            ]
+          },
+          "polarity": {
+            "enum": [
+              "positive",
+              "negative",
+              "mixed",
+              "unknown"
+            ]
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "study_designs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "reference_status": {
+            "enum": [
+              "required",
+              "admissible",
+              "flagged"
+            ]
+          },
+          "entail_max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "type"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "qualifies",
+              "compares"
+            ]
+          }
+        }
+      }
+    },
+    "unresolved_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing_information": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hard_violations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget_remaining": {
+      "type": "object"
+    },
+    "validation": {
+      "type": "object"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

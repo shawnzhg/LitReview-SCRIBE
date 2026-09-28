@@ -1,0 +1,167 @@
+diff --git a/src/base_agent.py b/src/base_agent.py
+index f0f5731..f145340 100644
+--- a/src/base_agent.py
++++ b/src/base_agent.py
+@@ -1,6 +1,6 @@
+ import gc, os, re, tiktoken
+ from langchain_ollama import ChatOllama
+-from langchain_openai import AzureChatOpenAI
++from langchain_openai import ChatOpenAI
+ from typing import Dict, List, Union, Optional
+ from langchain.schema import AIMessage, HumanMessage
+ from src.utils.file_utils import load_json, save_to_json
+@@ -41,13 +41,11 @@ class BaseAgent:
+         self.name = name
+         self.review_id = review_id
+ 
+-        # Determine the model based on the name provided
+-        if "gpt" in model_name.lower():
+-            self.model = AzureChatOpenAI(
+-                model_name=model_name,
+-                api_version=API_VERSION,
+-                azure_endpoint=BASE_URL,
++        if "gpt" in model_name.lower() or "qwen" in model_name.lower():
++            self.model = ChatOpenAI(
++                model=model_name,
+                 api_key=API_KEY,
++                base_url=BASE_URL,
+                 temperature=temperature,
+             )
+ 
+@@ -143,6 +141,9 @@ class BaseAgent:
+ 
+                 message_list_final.append(message)
+ 
++            if not message_list_final and message_list:
++                message_list_final.append(message_list[0])
++
+             # Re-reverse the messages
+             message_list_final.reverse()
+ 
+diff --git a/src/builder.py b/src/builder.py
+index 66871c0..9efaa2a 100644
+--- a/src/builder.py
++++ b/src/builder.py
+@@ -657,7 +657,7 @@ def build_research_workflow(
+                 # Here `messages` is a Dict
+                 for part in messages.keys():
+ 
+-                    discussion_dict[part] = messages[part]
++                    discussion_dict[part] = messages[part] if messages[part] is not None else []
+                     discussion_dict[part].extend(review_message)
+ 
+         else:
+@@ -671,6 +671,8 @@ def build_research_workflow(
+             else:
+                 for part in messages.keys():
+ 
++                    if discussion_dict.get(part) is None:
++                        discussion_dict[part] = []
+                     discussion_dict[part].extend(stop_message)
+ 
+             verdict = True
+diff --git a/src/editor.py b/src/editor.py
+index 3452784..efe6732 100644
+--- a/src/editor.py
++++ b/src/editor.py
+@@ -92,18 +92,16 @@ class EditorAgent(BaseAgent):
+                 folder_name="final",
+             )
+ 
+-            # Remove the "MISSING SECTIONS list"
+-            response_complete[-1].content = response_complete[-1].content.split(
+-                "===\n\n", 1
+-            )[1]
+-
+-            # Adjust the response based on the completion requirement
+-            content = (
+-                response[-1].content.rsplit("===\n\n", 1)[0]
+-                + "===\n\n"
+-                + response_complete[-1].content
+-            )
+-            response_final = [AIMessage(content=content)]
++            if response_complete and "===\n\n" in (response_complete[-1].content or ""):
++                completion = response_complete[-1].content.split("===\n\n", 1)[1]
++                content = (
++                    response[-1].content.rsplit("===\n\n", 1)[0]
++                    + "===\n\n"
++                    + completion
++                )
++                response_final = [AIMessage(content=content)]
++            else:
++                response_final = response
+ 
+         else:
+             response_final = response
+@@ -156,18 +154,16 @@ class EditorAgent(BaseAgent):
+                 folder_name="final",
+             )
+ 
+-            # Remove the "MISSING SECTIONS list"
+-            response_complete[-1].content = response_complete[-1].content.split(
+-                "===\n\n", 1
+-            )[1]
+-
+-            # Adjust the response based on the completion requirement
+-            content = (
+-                response[-1].content.rsplit("===\n\n", 1)[0]
+-                + "===\n\n"
+-                + response_complete[-1].content
+-            )
+-            response_final = [AIMessage(content=content)]
++            if response_complete and "===\n\n" in (response_complete[-1].content or ""):
++                completion = response_complete[-1].content.split("===\n\n", 1)[1]
++                content = (
++                    response[-1].content.rsplit("===\n\n", 1)[0]
++                    + "===\n\n"
++                    + completion
++                )
++                response_final = [AIMessage(content=content)]
++            else:
++                response_final = response
+ 
+         else:
+             response_final = response
+diff --git a/src/utils/constants.py b/src/utils/constants.py
+index 68c0972..33e6b33 100644
+--- a/src/utils/constants.py
++++ b/src/utils/constants.py
+@@ -22,12 +22,12 @@ NUM_SUBSECTIONS = 4
+ SECTION_LEN = 1_000
+ SETTING_NAME = "abs_same_edit"
+ 
+-# The (Azure)OpenAI variables
+ ENCODING_NAME = "gpt-4o-mini"
+-MODEL_VER = "gpt4o-mini-240718"
+-BASE_URL = os.getenv("AZURE_OPENAI_URL_BASE")
+-API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+-API_KEY = os.getenv("OPENAI_ORGANIZATION_KEY")
++MODEL_VER = os.environ.get("LOCAL_LLM_MODEL", "Qwen3.5-9B")
++API_KEY = "dummy"
++LLM_BASE_URL = os.environ.get("LOCAL_LLM_URL", "http://localhost:30002/v1")
++BASE_URL = LLM_BASE_URL
++API_VERSION = None
+ 
+ # The node names
+ SETUP_STATE = "setup_state"
+diff --git a/utils/evaluator.py b/utils/evaluator.py
+index 5bd6343..9d6f4e2 100644
+--- a/utils/evaluator.py
++++ b/utils/evaluator.py
+@@ -5,7 +5,7 @@ from argparse import Namespace
+ from hydra import compose, initialize
+ from typing import Dict, List, Tuple, Union
+ from .misc import load_json, read_file, save_to_json
+-from .create_db import prepare_dataset, create_database_fulltext
++from .create_db import prepare_dataset
+ from utils.eval_metrics.rouge import rouge_eval
+ from utils.eval_metrics.recall import calc_recall_full
+ from utils.eval_metrics.citation_quality import citation_quality
+@@ -271,6 +271,7 @@ def eval_method(filename: str, end_extension: str, args: Namespace):
+         _ = prepare_dataset(args)
+         ref_db_path = os.path.join(args.db_dir, "refs.json")
+         ref_data = load_json(ref_db_path)
++        from .create_db import create_database_fulltext
+         create_database_fulltext(ref_data, args)
+         generated_reviews = pd.read_csv(args.final_papers_file)
+         citation_dict = citation_quality(

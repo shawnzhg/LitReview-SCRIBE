@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task_spec/1.0",
+  "title": "TaskSpec",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "question",
+    "review_type",
+    "scope",
+    "audience",
+    "corpus_snapshot_id",
+    "publication_cutoff",
+    "allowed_tools",
+    "budget",
+    "output_spec",
+    "content_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "taskspec/1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^pmcid_PMC[0-9]+$"
+    },
+    "split": {
+      "enum": [
+        "train",
+        "dev"
+      ]
+    },
+    "question": {
+      "type": "string"
+    },
+    "review_type": {
+      "enum": [
+        "narrative"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "population",
+        "intervention_or_topic",
+        "outcomes",
+        "inclusion",
+        "exclusion"
+      ],
+      "properties": {
+        "population": {
+          "type": "string"
+        },
+        "intervention_or_topic": {
+          "type": "string"
+        },
+        "comparators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inclusion": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclusion": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "audience": {
+      "type": "string"
+    },
+    "corpus_snapshot_id": {
+      "type": "string"
+    },
+    "publication_cutoff": {
+      "type": "integer",
+      "minimum": 1900,
+      "maximum": 2100
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "pool_search",
+          "pool_fetch"
+        ]
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "max_document_opens"
+      ],
+      "properties": {
+        "max_document_opens": {
+          "type": "integer"
+        }
+      }
+    },
+    "output_spec": {
+      "type": "object",
+      "required": [
+        "target_words",
+        "citation_style"
+      ],
+      "properties": {
+        "target_words": {
+          "type": "integer"
+        },
+        "citation_style": {
+          "enum": [
+            "numeric"
+          ]
+        }
+      }
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

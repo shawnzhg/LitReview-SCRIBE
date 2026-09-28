@@ -1,0 +1,56 @@
+# Pre-registered analysis constants read by ccbench.config.
+version: "0.1"
+
+controllability:
+  gamma: 0.90
+  beta: 0.50
+  max_iter: 200
+  tol: 1.0e-6
+  label_weights: {stage: 0.30, action_class: 0.30, tool_class: 0.15, resource_bin: 0.15, observable_effect: 0.10}
+  state_bins:
+    n_search: [0, 1, 4, 16, 64, 1000000]
+    n_llm:    [0, 4, 16, 64, 256, 1024, 1000000]
+    n_papers: [0, 10, 30, 60, 120, 1000000]
+
+tiers:
+  w_req_quantile: 0.75
+
+readouts:
+  K: 50
+  title_match_fuzzy: 80
+
+stats:
+  envelope_quantile: 0.95
+
+units:
+  hub_weight_quantile: 0.75
+  recent_years_before_cutoff: 3
+  community_min_size: 3
+  multi_source_min_refs: 2
+  reused_paper_min_claims: 3
+  motif_chain_min_len: 3
+
+channel:
+  claim_match_cosine: 0.70
+  section_match_fuzzy: 80
+  section_match_cosine: 0.60
+
+calibration:
+  band_quantiles: [0.10, 0.90]
+  epsilon_fair_quantile: 0.50
+  non_discriminating_if_eps_fair_ge: 0.50
+  non_discriminating_if_peer_sd_lt: 0.02
+
+fair_first:
+  design: {L_M: ratio_q95, L_s: q95, eps_in: mean}
+  lm_exclude: [surveyforge]
+  ctrl_lambda_in: 0.5
+  tolerance_admit: {gt: 0.0, lt: 0.5}
+  same_model_groups:
+    gpt56: [autosurvey, surveyforge, surveyg, sgi, lira, llmxmr]
+    drtulu: [drtulu]
+
+synthetic:
+  retrieval_recall: {A: 0.80, B: 0.60}
+  claim_keep: {A: 0.85, B: 0.65}
+  section_perm: {A: 0.10, B: 0.30}

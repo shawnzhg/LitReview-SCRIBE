@@ -1,0 +1,15 @@
+SKILL: search without repeating yourself (evidence acquisition)
+- Every search spends one unit of a fixed budget. A search that only returns papers you already have is wasted.
+- Before writing a query, read the QUERY LEDGER: each past query and how many NEW papers it added.
+- Never issue a past query again, and never reword one with the same key terms. Near-copies (mostly the
+  same content words) are refused without being run, and you are told which past query you repeated.
+- A query that added few new papers means that angle is used up. Move to another angle; do not rephrase it.
+- After two searches in a row add no new papers, change angle completely.
+- Angles a biomedical review usually needs: disease mechanisms and pathways; specific drugs, genes,
+  pathogens or biomarkers; study designs (trials, cohorts, case-control, animal and cell models);
+  populations and subgroups; clinical outcomes, prognosis and adverse effects; diagnosis, imaging and
+  measurement methods; landmark and historical studies; controversies and negative results; synonyms,
+  abbreviations and older terminology.
+- Write each query as 3-8 specific content words, phrased the way the key papers would phrase their
+  titles. Leave out filler such as "review", "recent advances", "role of", "new insights".
+- Stop only when recent queries on several different angles have all added almost nothing.

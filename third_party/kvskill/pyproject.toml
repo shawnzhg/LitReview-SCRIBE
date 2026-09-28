@@ -1,0 +1,14 @@
+# Packaging metadata of the kvskill Python package.
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kvskill"
+version = "0.0.1"
+description = "KV-Skill carrier training and serving"
+requires-python = ">=3.12"
+dependencies = ["torch", "transformers", "safetensors", "numpy"]
+
+[tool.setuptools.packages.find]
+include = ["kvskill*"]

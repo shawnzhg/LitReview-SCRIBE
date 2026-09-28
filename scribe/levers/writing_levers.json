@@ -1,0 +1,1 @@
+{"schema": "writing_levers/1", "levers": {"paragraphs": true, "evidence": {"order": "round_robin", "cap": 30}, "length": {"tokens_per_word": 3.5, "slack": 0.5, "first_attempt": true}}}

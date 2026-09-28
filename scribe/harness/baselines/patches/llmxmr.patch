@@ -1,0 +1,41 @@
+diff --git a/LLMxMapReduce_V2/src/data_structure/skeleton.py b/LLMxMapReduce_V2/src/data_structure/skeleton.py
+index e9db9fe..5265660 100644
+--- a/LLMxMapReduce_V2/src/data_structure/skeleton.py
++++ b/LLMxMapReduce_V2/src/data_structure/skeleton.py
+@@ -119,8 +119,16 @@ class Skeleton:
+             # self.check_bibkeys()
+         except Exception as e:
+             logger.warning(f"Error in parsing skeleton {provide_title}: {e}\n{traceback.format_exc()}")
+-            self.root = None
+-            raise e
++            self.skeleton_parse_failed = True
++            if self.root is None:
++                self.root = SkeletonNode(title=provide_title)
++            try:
++                self.root.update_section()
++                for node in self.root.all_section:
++                    node.parse_description()
++            except Exception:
++                pass
++            self.raw_skeleton = raw_outline if isinstance(raw_outline, str) else (provide_title or "")
+         return self
+ 
+     def check_bibkeys(self):
+diff --git a/LLMxMapReduce_V2/src/utils/process_str.py b/LLMxMapReduce_V2/src/utils/process_str.py
+index 4ed7269..325ba1c 100644
+--- a/LLMxMapReduce_V2/src/utils/process_str.py
++++ b/LLMxMapReduce_V2/src/utils/process_str.py
+@@ -14,9 +14,11 @@ def parse_md_content(raw_content, label="markdown"):
+     if md_content:
+         md_content = md_content.group(1).strip()
+     else:
+-        raise MdNotFoundError(raw_content=raw_content)
++        generic = re.search(r"```[a-zA-Z]*\n(.*?)\n```", raw_content, re.DOTALL)
++        md_content = generic.group(1).strip() if generic else raw_content.strip()
+     if "```" in md_content:
+-        raise MdNotFoundError(raw_content=raw_content)
++        md_content = re.sub(r"^\s*```[a-zA-Z]*\s*$", "", md_content, flags=re.MULTILINE).strip()
++        md_content = md_content.replace("```", "").strip()
+     return md_content
+ 
+ def get_section_title(content):

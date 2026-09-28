@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run_manifest/1.0",
+  "title": "RunManifest",
+  "type": "object",
+  "required": [
+    "run_id",
+    "task_id",
+    "level",
+    "window",
+    "mode",
+    "system",
+    "commit",
+    "prompt_hash",
+    "corpus_snapshot_id",
+    "seed",
+    "entry_hash",
+    "exit_hash",
+    "budget",
+    "observed_resources",
+    "started_at",
+    "ended_at",
+    "status",
+    "adapter_version",
+    "evaluator_version",
+    "host_class"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "window": {
+      "enum": [
+        "e2e",
+        "acquisition",
+        "synthesis",
+        "planning",
+        "writing"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "native_chain",
+        "bundle_entry"
+      ]
+    },
+    "system": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "prompt_hash": {
+      "type": "string"
+    },
+    "corpus_snapshot_id": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "entry_hash": {
+      "type": "string"
+    },
+    "exit_hash": {
+      "type": "string"
+    },
+    "budget": {
+      "type": "object"
+    },
+    "observed_resources": {
+      "type": "object"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "failed",
+        "budget_exhausted",
+        "na"
+      ]
+    },
+    "adapter_version": {
+      "type": "string"
+    },
+    "evaluator_version": {
+      "type": "string"
+    },
+    "host_class": {
+      "enum": [
+        "login",
+        "gpu"
+      ]
+    },
+    "serving": {
+      "type": "object"
+    },
+    "entry_mode": {
+      "enum": [
+        "native_chain",
+        "bundle_entry"
+      ]
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "train"
+      ]
+    },
+    "temperature": {
+      "type": "number"
+    },
+    "failure_reason": {
+      "type": "string"
+    },
+    "entry_bundle_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "allowlist_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "allowlist_path": {
+      "type": "string"
+    },
+    "allowlist_n": {
+      "type": "integer"
+    },
+    "n_delivered_papers": {
+      "type": "integer"
+    },
+    "n_with_abstract": {
+      "type": "integer"
+    },
+    "n_without_abstract": {
+      "type": "integer"
+    },
+    "texts_sha256": {
+      "type": "string"
+    },
+    "delivery_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "bundle_subset_of_allowlist": {
+      "type": "boolean"
+    },
+    "cutoff_ok": {
+      "type": "boolean"
+    },
+    "n_year_unknown": {
+      "type": "integer"
+    },
+    "delivery_ok": {
+      "type": "boolean"
+    }
+  }
+}

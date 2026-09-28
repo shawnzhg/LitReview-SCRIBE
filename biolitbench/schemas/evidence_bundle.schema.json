@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence_bundle/1.0",
+  "title": "EvidenceBundle",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_spec_hash",
+    "retrieval_status",
+    "papers",
+    "evidence",
+    "provenance_tier",
+    "budget_remaining",
+    "validation",
+    "content_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "evidence_bundle/1.0"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "task_spec_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "provenance_tier": {
+      "enum": [
+        "reference_derived",
+        "agent_retrieved"
+      ]
+    },
+    "retrieval_status": {
+      "enum": [
+        "done",
+        "budget_exhausted",
+        "failed"
+      ]
+    },
+    "papers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "rank",
+          "decision"
+        ],
+        "properties": {
+          "paper_id": {
+            "type": "string"
+          },
+          "doi": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "first_seen_step": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retrieval_provenance": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "rank_from_tool": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "route": {
+                "enum": [
+                  "dense",
+                  "lexical",
+                  "both",
+                  "cited_by_human"
+                ]
+              }
+            }
+          },
+          "decision": {
+            "enum": [
+              "include",
+              "exclude",
+              "uncertain"
+            ]
+          },
+          "decision_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "post_cutoff": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "paper_id",
+          "granularity",
+          "locator",
+          "text_hash"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "paper_id": {
+            "type": "string"
+          },
+          "granularity": {
+            "enum": [
+              "abstract",
+              "abstract_sentence"
+            ]
+          },
+          "locator": {
+            "type": "string"
+          },
+          "text_hash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "condition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "discovered_union": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget_remaining": {
+      "type": "object"
+    },
+    "validation": {
+      "type": "object"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

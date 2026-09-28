@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "call_log/1.0",
+  "title": "CallLog — one externally-caused event inside a run",
+  "type": "object",
+  "required": [
+    "seq",
+    "run_id",
+    "task_id",
+    "window",
+    "kind",
+    "started_at",
+    "ended_at",
+    "resources"
+  ],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "window": {
+      "enum": [
+        "acquisition",
+        "synthesis",
+        "planning",
+        "writing"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "llm",
+        "retrieval_search",
+        "retrieval_open",
+        "tool",
+        "validate",
+        "internal_verifier",
+        "failure",
+        "retry",
+        "budget_refusal"
+      ]
+    },
+    "llm": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "completion",
+        "params"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "model_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role_sequence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "prompt_sha256": {
+          "type": "string"
+        },
+        "completion": {
+          "type": "string"
+        },
+        "finish_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "logprob_sum": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "n_prompt_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "n_completion_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "route": {
+          "enum": [
+            "dense",
+            "lexical",
+            "both"
+          ]
+        },
+        "k_requested": {
+          "type": "integer"
+        },
+        "cutoff_year": {
+          "type": "integer"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "returned": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "paper_id",
+              "rank",
+              "score"
+            ],
+            "properties": {
+              "paper_id": {
+                "type": "string"
+              },
+              "rank": {
+                "type": "integer"
+              },
+              "score": {
+                "type": "number"
+              },
+              "route": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "post_cutoff_suppressed": {
+          "type": "integer"
+        },
+        "kept_by_agent": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "opened": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifact_delta": {
+      "type": "object",
+      "properties": {
+        "papers_added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "claims_added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "relations_added": {
+          "type": "integer"
+        },
+        "sections_added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "branch_label": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "action_class": {
+          "type": "string"
+        },
+        "tool_class": {
+          "type": "string"
+        },
+        "resource_bin": {
+          "type": "string"
+        },
+        "retry_or_failure": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observable_effect": {
+          "type": "string"
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "traceback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recovered": {
+          "type": "boolean"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": [
+        "wall_ms"
+      ],
+      "properties": {
+        "in_tokens": {
+          "type": "integer"
+        },
+        "out_tokens": {
+          "type": "integer"
+        },
+        "wall_ms": {
+          "type": "integer"
+        },
+        "usd": {
+          "type": "number"
+        },
+        "gpu_seconds": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "host_class": {
+      "enum": [
+        "login",
+        "gpu"
+      ]
+    }
+  }
+}
