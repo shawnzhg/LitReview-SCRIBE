@@ -1,5 +1,20 @@
 # LitReview-SCRIBE
 
+[![arXiv](https://img.shields.io/badge/arXiv-2609.32318-b31b1b.svg)](https://arxiv.org/abs/2609.32318)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Code for **[What Can a Leaderboard Certify? Compositional Controllability for Fair Evaluation and Training of Biomedical Literature-Review Agents](https://arxiv.org/abs/2609.32318)**.
+
+Zhaowei Han†, Xiang Zhang†, Lingxiao Guan†, Danqi Hu, Kai Liu, Kevin Chang, Jie Liu — University of Michigan, Ann Arbor  
+<sub>† Equal contribution.</sub>
+
+A comparison window covers one stage, several stages, or the whole agent. The gap between
+observed and controlled score differences is bounded using only nuisance outside the window,
+which gives an admissibility test applied before scores are inspected: inadmissible comparisons
+are refused, and an admissible ordering is certified only when the score gap exceeds the
+combined sampling and nuisance radii. This repository holds **BioLitBench** and its scorer, the
+certification pipeline, and **SCRIBE**, trained with rewards measured at each stage's exit.
+
 Commands for each table of the paper. Run them from the repository root; `<...>` marks a value to fill in.
 
 ## Requirements
@@ -238,3 +253,21 @@ $PY -m ccbench.experiments.E3_distance                                          
 ```
 
 tab:theory-checks collects these outputs.
+
+## Citation
+
+```bibtex
+@misc{han2026leaderboardcertifycompositionalcontrollability,
+      title={What Can a Leaderboard Certify? Compositional Controllability for Fair Evaluation and Training of Biomedical Literature-Review Agents}, 
+      author={Zhaowei Han and Xiang Zhang and Lingxiao Guan and Danqi Hu and Kai Liu and Kevin Chang and Jie Liu},
+      year={2026},
+      eprint={2609.32318},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2609.32318}, 
+}
+```
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
