@@ -2,6 +2,7 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-2609.32318-b31b1b.svg)](https://arxiv.org/abs/2609.32318)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Try it](https://img.shields.io/badge/Try%20it-glkb.org-2ea44f.svg)](https://glkb.org)
 
 Code for **[What Can a Leaderboard Certify? Compositional Controllability for Fair Evaluation and Training of Biomedical Literature-Review Agents](https://arxiv.org/abs/2609.32318)**.
 
@@ -14,6 +15,8 @@ which gives an admissibility test applied before scores are inspected: inadmissi
 are refused, and an admissible ordering is certified only when the score gap exceeds the
 combined sampling and nuisance radii. This repository holds **BioLitBench** and its scorer, the
 certification pipeline, and **SCRIBE**, trained with rewards measured at each stage's exit.
+
+**Try it:** the literature review is available at [glkb.org](https://glkb.org).
 
 Commands for each table of the paper. Run them from the repository root; `<...>` marks a value to fill in.
 
