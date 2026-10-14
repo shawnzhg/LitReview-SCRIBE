@@ -184,8 +184,7 @@ def build(tmp):
         rows.append((path, "global", "", "store", "file", prof, rf.sha256_bytes(data)))
     for rel, data in (("E10/null_tau.json", json.dumps({t: 0.5 for t in TEST})), ("E10/calibration.csv", "readout,x\n"),
                       ("readout_membership.json", json.dumps({"readouts": []}))):
-        put(snap / "scoring" / "test" / rel, data)
-        rows.append(("out/" + rel, "scoring", "", "scoring", "file", "test", rf.sha256_bytes(data.encode())))
+        put(tmp / "frozen" / rel, data)
     tsv(snap / "manifests" / "original_sha256.tsv", rf.ORIGINAL_COLUMNS, sorted(rows))
     tsv(snap / "manifests" / "abstract_sha256.tsv", rf.ABSTRACT_COLUMNS,
         [(p, rf.sha256_hex(abstract(p)), len(abstract(p)), ",".join(sorted(absrows[p]))) for p in sorted(absrows, key=int)])
@@ -208,6 +207,11 @@ def write_manifest(snap):
     put(snap / "MANIFEST.sha256", "".join(f"{rf.file_sha256(snap / f)}  {f}\n" for f in files))
 
 
+@pytest.fixture(autouse=True)
+def frozen_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(rf, "FROZEN_TEST", str(tmp_path / "frozen"))
+
+
 @pytest.fixture
 def test_set(monkeypatch):
     monkeypatch.setattr(verify_data, "TEST_SET_SHA16", hashlib.sha256("\n".join(sorted(TEST)).encode()).hexdigest()[:16])
@@ -227,7 +231,7 @@ def failures(root):
     return {k: v["failures"] for k, v in rep["checks"].items() if v["failures"]}
 
 
-def test_prepare_root_links_the_store_copies_scoring_and_writes_site_env(tmp_path, capsys):
+def test_prepare_root_links_the_store_copies_the_frozen_scoring_files_and_writes_site_env(tmp_path, capsys):
     snap, work = build(tmp_path)
     root = tmp_path / "root"
     assert prepare_root.main(["--snapshot", str(snap), "--profile", "test", "--root", str(root)]) == 0
@@ -262,6 +266,9 @@ def test_prepare_root_links_the_store_copies_scoring_and_writes_site_env(tmp_pat
     assert (train / rf.contract_path("refs_enriched", T1)).is_symlink()
     with pytest.raises(SystemExit):
         prepare_root.main(["--snapshot", str(snap), "--profile", "test", "--root", str(snap / "inside")])
+    assert prepare_root.main(["--snapshot", str(snap), "--profile", "test", "--root", str(tmp_path / "r2"),
+                              "--frozen", str(tmp_path / "no_frozen")]) == 1
+    assert prepare_root.os.path.samefile(prepare_root.rf.FROZEN_TEST, tmp_path / "frozen")
 
 
 @pytest.mark.parametrize("profile", ["test", "train"])
@@ -399,6 +406,7 @@ def test_the_fixed_input_launcher_gates_on_verify_data(tmp_path, test_set, profi
     py = tmp_path / "run_py"
     put(py, f"#!/bin/sh\nexec {sys.executable} -c 'import sys; sys.path.insert(0, sys.argv[1].rsplit(\"/\", 1)[0]); "
             f"import verify_data; verify_data.TEST_SET_SHA16 = \"{verify_data.TEST_SET_SHA16}\"; "
+            f"verify_data.rf.FROZEN_TEST = \"{tmp_path / 'frozen'}\"; "
             f"sys.exit(verify_data.main(sys.argv[2:]))' \"$@\"\n")
     py.chmod(0o755)
     env = {"PATH": os.environ["PATH"], "RUNS": str(root / "runs"), "RUN_PY": str(py),

@@ -11,6 +11,7 @@ REPORT_SCHEMA = "biolit-rehydrate-report/1"
 DATASET = "BioLitBench"
 VERSION = "v1.0"
 PROFILES = ("test", "train")
+FROZEN_TEST = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "evaluation", "frozen", "test")
 
 PATHS = {
     "rs": "biolit-bench/results_2000/benchmark_claims/{t}/review_structure_llm.json",

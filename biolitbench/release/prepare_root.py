@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Assembles the data root of one profile from a release snapshot: links the stored files, copies the frozen scoring tables
-to out/ and a working copy for the scorer to scores/, and writes site.env."""
+"""Assembles the data root of one profile from a release snapshot: links the stored files, copies the repository's frozen
+scoring files to out/ and a working copy for the scorer to scores/, and writes site.env."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release_format as rf
 
-SCORING_PREFIX = "out/"
+FROZEN_OUT = "out"
 WORKING_OUT = "scores"
 LINKED_DIRS = ("manifests", "splits")
 
@@ -25,10 +25,6 @@ def source_path(snapshot: str, row: dict) -> str:
     rel = rf.safe_relpath(row["path"])
     if row["origin"] == "store":
         return os.path.join(snapshot, "store", rel)
-    if row["origin"] == "scoring":
-        if not row["path"].startswith(SCORING_PREFIX):
-            raise ValueError(f"scoring row outside out/: {row['path']}")
-        return os.path.join(snapshot, "scoring", "test", rf.safe_relpath(row["path"][len(SCORING_PREFIX):]))
     raise ValueError(f"origin {row['origin']!r} is not prepared by links or copies")
 
 
@@ -90,36 +86,42 @@ def write_site_env(root: str, env: dict) -> str:
     return dst
 
 
-def prepare(snapshot: str, profile: str, root: str, parent: str | None = None, overwrite_scoring: bool = False) -> dict:
+def frozen_files(frozen: str) -> list:
+    return sorted(os.path.relpath(os.path.join(d, f), frozen) for d, _, fs in os.walk(frozen) for f in fs)
+
+
+def prepare(snapshot: str, profile: str, root: str, parent: str | None = None, overwrite_scoring: bool = False,
+            frozen: str | None = None) -> dict:
     snapshot, root = os.path.abspath(snapshot), os.path.abspath(root)
     real_snap, real_root = os.path.realpath(snapshot), os.path.realpath(root)
     if real_root == real_snap or real_root.startswith(real_snap + os.sep) or real_snap.startswith(real_root + os.sep):
         raise SystemExit(f"--root {root} and --snapshot {snapshot} must not contain each other")
     rows = [r for r in rf.read_originals(snapshot) if profile in rf.parse_profiles(r.get("profiles"))]
-    os.makedirs(os.path.join(root, "out"), exist_ok=True)
+    os.makedirs(os.path.join(root, FROZEN_OUT), exist_ok=True)
     os.makedirs(os.path.join(root, WORKING_OUT), exist_ok=True)
     missing, conflicts = [], []
-    counts = {"linked": 0, "copied": 0, "seeded": 0, "store_rows": 0, "scoring_rows": 0, "rehydrate_rows": 0}
+    counts = {"linked": 0, "copied": 0, "seeded": 0, "store_rows": 0, "frozen_files": 0, "rehydrate_rows": 0}
     for r in rows:
         if r["origin"] == "rehydrate":
             counts["rehydrate_rows"] += 1
-            continue
-        if r["origin"] == "scoring" and profile != "test":
             continue
         src = source_path(snapshot, r)
         if not os.path.isfile(src):
             missing.append(src)
             continue
-        dst = os.path.join(root, rf.safe_relpath(r["path"]))
-        if r["origin"] == "store":
-            counts["store_rows"] += 1
-            counts["linked"] += link(src, dst, conflicts)
-        else:
-            counts["scoring_rows"] += 1
-            counts["copied"] += copy(src, dst, conflicts, overwrite_scoring)
-            work = os.path.join(root, WORKING_OUT, rf.safe_relpath(r["path"][len(SCORING_PREFIX):]))
+        counts["store_rows"] += 1
+        counts["linked"] += link(src, os.path.join(root, rf.safe_relpath(r["path"])), conflicts)
+    if profile == "test":
+        frozen = frozen or rf.FROZEN_TEST
+        for rel in frozen_files(frozen):
+            src = os.path.join(frozen, rel)
+            counts["frozen_files"] += 1
+            counts["copied"] += copy(src, os.path.join(root, FROZEN_OUT, rel), conflicts, overwrite_scoring)
+            work = os.path.join(root, WORKING_OUT, rel)
             if not os.path.lexists(work):
                 counts["seeded"] += copy(src, work, conflicts, False)
+        if not counts["frozen_files"]:
+            missing.append(frozen)
     for name in LINKED_DIRS:
         src = os.path.join(snapshot, name)
         if not os.path.isdir(src):
@@ -140,8 +142,9 @@ def main(argv=None):
     ap.add_argument("--root", required=True)
     ap.add_argument("--parent")
     ap.add_argument("--overwrite-scoring", action="store_true")
+    ap.add_argument("--frozen")
     a = ap.parse_args(argv)
-    summary = prepare(a.snapshot, a.profile, a.root, a.parent, a.overwrite_scoring)
+    summary = prepare(a.snapshot, a.profile, a.root, a.parent, a.overwrite_scoring, a.frozen)
     print(json.dumps({k: v for k, v in summary.items() if k not in ("missing_in_snapshot", "conflicts")}))
     for p in summary["missing_in_snapshot"]:
         print(f"[prepare_root] missing in snapshot: {p}", file=sys.stderr)

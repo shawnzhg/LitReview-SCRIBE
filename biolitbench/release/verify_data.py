@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks a data root against the release manifests and the rehydration report, writes verify_report.json and lists every failure."""
+"""Checks a data root against the release manifests, the repository's frozen scoring files and the rehydration report, writes verify_report.json and lists every failure."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ EXTRA_REQUIRED = {"test": ("manifests/original_sha256.tsv", "rehydrate_report.js
                   "train": ("manifests/original_sha256.tsv", "rehydrate_report.json", "splits/train.jsonl")}
 BUNDLE_KIND = {"test": "bundle_test", "train": "bundle_train"}
 GRAPHS = "data_2000/dataset_2000/graphs"
+FROZEN_OUT = "out"
 NULL_TAU = "out/E10/null_tau.json"
 HUB_FILES = (".gitattributes",)
 HUB_DIRS = (".git", ".cache", ".huggingface")
@@ -232,7 +233,8 @@ def reverify(root: str, snap: str | None, row: dict, listed: dict) -> list:
     return errs
 
 
-def verify(root: str, profile: str, snapshot: str | None = None, parent: str | None = None, workers: int = 8) -> dict:
+def verify(root: str, profile: str, snapshot: str | None = None, parent: str | None = None, workers: int = 8,
+           frozen: str | None = None) -> dict:
     C = Checks()
     root = os.path.abspath(root)
     snap = snapshot_dir(root, snapshot)
@@ -254,7 +256,12 @@ def verify(root: str, profile: str, snapshot: str | None = None, parent: str | N
         C.fail("closure", "manifests/article_sources.tsv missing")
     req = [r for r in rows if profile in rf.parse_profiles(r.get("profiles"))
            and not (r["kind"] in rf.REVIEW_KINDS and r["task_id"] in nr)]
-    required = [r["path"] for r in req] + list(EXTRA_REQUIRED[profile])
+    frozen = frozen or rf.FROZEN_TEST
+    frozen_rel = sorted(os.path.relpath(os.path.join(d, f), frozen) for d, _, fs in os.walk(frozen) for f in fs) \
+        if profile == "test" else []
+    if profile == "test" and not frozen_rel:
+        C.fail("closure", f"no frozen scoring files under {frozen}")
+    required = [r["path"] for r in req] + list(EXTRA_REQUIRED[profile]) + [f"out/{rel}" for rel in frozen_rel]
     present = set()
     for p in required:
         C.count("closure")
@@ -263,7 +270,7 @@ def verify(root: str, profile: str, snapshot: str | None = None, parent: str | N
         else:
             C.fail("closure", f"{p}: missing")
 
-    gate_rows = [r for r in req if r["path"] in present and (r["origin"] in ("store", "scoring") or r["kind"] in rf.REVIEW_KINDS)]
+    gate_rows = [r for r in req if r["path"] in present and (r["origin"] == "store" or r["kind"] in rf.REVIEW_KINDS)]
     unit_rows = [r for r in req if r["path"] in present and r["origin"] == "rehydrate" and r["kind"] in rf.ABSTRACT_KINDS]
     got = digests([os.path.join(root, rf.safe_relpath(r["path"])) for r in gate_rows + unit_rows], workers)
 
@@ -276,6 +283,12 @@ def verify(root: str, profile: str, snapshot: str | None = None, parent: str | N
         if sha(r) != r["sha256"]:
             mismatched.add(r["path"])
             C.fail("file_gate", f"{r['path']}: sha256 differs from manifests/original_sha256.tsv")
+    for rel in frozen_rel:
+        if f"out/{rel}" not in present:
+            continue
+        C.count("file_gate")
+        if rf.file_sha256(os.path.join(root, FROZEN_OUT, rel)) != rf.file_sha256(os.path.join(frozen, rel)):
+            C.fail("file_gate", f"out/{rel}: sha256 differs from the repository's evaluation/frozen/test/{rel}")
 
     rep = load_report(C, root, profile, tsv_sha, set(required))
     drift_files = {f.get("path") for f in (rep or {}).get("files") or [] if f.get("status") == "drift"}
@@ -410,8 +423,9 @@ def main(argv=None):
     ap.add_argument("--snapshot")
     ap.add_argument("--parent")
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--frozen")
     a = ap.parse_args(argv)
-    report = verify(a.root, a.profile, a.snapshot, a.parent, a.workers)
+    report = verify(a.root, a.profile, a.snapshot, a.parent, a.workers, a.frozen)
     for name, r in report["checks"].items():
         for msg in r["failures"][:PRINT_LIMIT]:
             print(f"[verify_data] FAIL {name}: {msg}", file=sys.stderr)
