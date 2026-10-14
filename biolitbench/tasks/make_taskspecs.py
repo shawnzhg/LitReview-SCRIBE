@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes the TaskSpec and gold file of every held-out task: the review title as the question, the
-review's publication year as the cutoff, before which all evidence must be published, and the review
-itself excluded. Usage: python make_taskspecs.py --pool-index <bm25 dir> [--force]."""
+review's publication year as the cutoff and the review itself excluded. Usage: python make_taskspecs.py
+--pool-index <bm25 dir> [--force]."""
 
 from __future__ import annotations
 import argparse

@@ -27,9 +27,4 @@ def year_of(pmid: str) -> int | None:
 
 def is_post_cutoff(pmid: str, cutoff: int) -> bool | None:
     y = year_of(pmid)
-    return None if y is None else y >= cutoff
-
-
-def before_cutoff(pmid: str, cutoff: int) -> bool:
-    y = year_of(pmid)
-    return y is not None and y < cutoff
+    return None if y is None else y > cutoff

@@ -270,11 +270,11 @@ class PoolRetrievalTool:
             pid = str(r.get("pmid") or "")
             y = _year(r.get("year"))
             raw.append({"pmid": pid, "rank": rk, "score": r.get("score"), "year": y})
-            if y is None or y >= self.cutoff:
+            if y is not None and y > self.cutoff:
                 self._record({"kind": "search", "route": "/t/{task}/search", "url": url, "query": query,
-                              "status": status, "returned": raw, "violation": f"year {y} not before the cutoff"})
-                raise PoolContractViolation(f"{self.task_id}: the service returned pmid {pid} of year {y}, not "
-                                            f"before the cutoff {self.cutoff}; the cutoff gate is broken")
+                              "status": status, "returned": raw, "violation": f"year {y} > cutoff"})
+                raise PoolContractViolation(f"{self.task_id}: the service returned pmid {pid} of year {y} "
+                                            f"> cutoff {self.cutoff}; the cutoff gate is broken")
         pool = {}
         mx = max((r.get("score") or 0) for r in body) if body else 1.0
         for r in body:
@@ -348,8 +348,8 @@ class PoolRetrievalTool:
                           "status": status, "error": body})
             raise PoolContractViolation(f"{self.task_id}: unexpected open answer HTTP {status}")
         y = _year(body.get("year"))
-        if y is None or y >= self.cutoff:
-            raise PoolContractViolation(f"{self.task_id}: by-id route served pmid {pid} of year {y}, not before the cutoff")
+        if y is not None and y > self.cutoff:
+            raise PoolContractViolation(f"{self.task_id}: by-id route served pmid {pid} of year {y} > cutoff")
         doc = {"pmid": pid, "title": body.get("title") or None, "abstract": body.get("abstract") or None,
                "doi": None, "year": y}
         if pid not in self.exclude_ids:
@@ -422,11 +422,11 @@ def task_start_provenance(task_id: str, cfg: PoolConfig = None) -> dict:
     probe = None
     if cfg.boundary is not None:
         b = (cfg.boundary.get("by_year") or {})
-        before, at = b.get(str(cut - 1)), b.get(str(cut))
+        at, after = b.get(str(cut)), b.get(str(cut + 1))
         probe = {"boundary_file": cfg.boundary_path}
-        for name, pm, want in (("before_cutoff", before, 200), ("at_cutoff", at, 404)):
+        for name, pm, want in (("at_cutoff", at, 200), ("after_cutoff", after, 404)):
             if pm is None:
-                probe[name] = {"pmid": None, "note": f"no pool document of year {cut - 1 if want == 200 else cut}"}
+                probe[name] = {"pmid": None, "note": f"no pool document of year {cut if want == 200 else cut + 1}"}
                 continue
             url = f"{cfg.url}/t/{urllib.parse.quote(task_id, safe='')}/graph/v1/paper/PMID:{pm}?fields=year"
             st, bd, pms, _ = http_get(url)
@@ -434,8 +434,8 @@ def task_start_provenance(task_id: str, cfg: PoolConfig = None) -> dict:
                            "year": (bd or {}).get("year") if isinstance(bd, dict) else None}
             if st != want:
                 bad.append(f"cutoff probe {name}: pmid {pm} answered {st}, want {want}")
-        if before is None and at is None:
-            bad.append(f"boundary file has no pmid for year {cut - 1} or {cut}")
+        if at is None and after is None:
+            bad.append(f"boundary file has no pmid for year {cut} or {cut + 1}")
     prov["cutoff_probe"] = probe
     prov["ok"] = not bad
     prov["problems"] = bad

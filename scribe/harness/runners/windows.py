@@ -211,7 +211,7 @@ def acquisition(spec, tool, client, log, seed=0):
                                      "rank_from_tool": p.get("rank"),
                                      "route": p.get("route") or "both"},
             "decision": "include", "decision_reason": rank_source,
-            "post_cutoff": bool(p.get("year") and int(p["year"]) >= spec["publication_cutoff"])})
+            "post_cutoff": bool(p.get("year") and int(p["year"]) > spec["publication_cutoff"])})
 
     rep = tool.report()
     status = "budget_exhausted" if (tool.exhausted["search"] or tool.exhausted["open"]) else "done"

@@ -1,5 +1,6 @@
-"""Tests the strictly-before cutoff in the harness checks, the retrieval client and the selection
-rule's windows, and the seeds 0, 1 and 2 of the campaign runner and the same-pool driver."""
+"""Tests the cutoff year (a paper of that year is legal) in the harness checks, the retrieval client,
+the selection rule's windows and their audit, and the seeds 0, 1 and 2 of the campaign runner and the
+same-pool driver."""
 
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scribe" / "retrieval"))
 sys.path.insert(0, str(ROOT / "scribe" / "harness" / "tools"))
 
 
-def test_bundle_delivery_and_integrity_refuse_a_paper_of_the_cutoff_year(task_runs):
+def test_bundle_delivery_and_integrity_refuse_a_paper_after_the_cutoff_year(task_runs):
     from common import seal
     from integrity import check_bundle
     spec = R.load_spec(TASK)
@@ -27,15 +28,17 @@ def test_bundle_delivery_and_integrity_refuse_a_paper_of_the_cutoff_year(task_ru
     assert errors == [] and summary["cutoff_ok"] is True
     late = copy.deepcopy(bundle)
     late.pop("content_hash")
-    late["papers"][0]["year"] = spec["publication_cutoff"]
+    late["papers"][0]["year"] = spec["publication_cutoff"] + 1
     late = seal(late)
     errors, summary = R.check_bundle_delivery(TASK, spec, late, texts, split="dev")
-    assert summary["cutoff_ok"] is False and any("year >= cutoff" in e for e in errors)
+    assert summary["cutoff_ok"] is False and any("year > cutoff" in e for e in errors)
     assert "bundle.post_cutoff_paper" in [f["code"] for f in check_bundle(late, spec)]
-    early = copy.deepcopy(late)
-    early.pop("content_hash")
-    early["papers"][0]["year"] = spec["publication_cutoff"] - 1
-    assert "bundle.post_cutoff_paper" not in [f["code"] for f in check_bundle(seal(early), spec)]
+    same = copy.deepcopy(late)
+    same.pop("content_hash")
+    same["papers"][0]["year"] = spec["publication_cutoff"]
+    same = seal(same)
+    assert R.check_bundle_delivery(TASK, spec, same, texts, split="dev")[1]["cutoff_ok"] is True
+    assert "bundle.post_cutoff_paper" not in [f["code"] for f in check_bundle(same, spec)]
 
 
 @pytest.fixture
@@ -50,21 +53,21 @@ def pool_tool(tmp_path):
     sys.modules.pop("pool_retrieval_tool", None)
 
 
-@pytest.mark.parametrize("year,ok", [(2019, True), (2020, False), (2021, False), (None, False)])
-def test_retrieval_client_accepts_only_papers_dated_before_the_cutoff(pool_tool, monkeypatch, year, ok):
+@pytest.mark.parametrize("year,ok", [(2019, True), (2020, True), (2021, False), (None, True)])
+def test_retrieval_client_accepts_papers_up_to_the_cutoff_year_and_undated_papers(pool_tool, monkeypatch, year, ok):
     PRT, tool = pool_tool
     hit = {"pmid": "11", "score": 3.0, "year": year, "title": "t", "abstract": "a"}
     monkeypatch.setattr(PRT, "http_get", lambda url, **k: (200, [hit], 1.0, 1))
     if ok:
         assert [r["paper_id"] for r in tool.search("q", k=5)] == ["11"]
     else:
-        with pytest.raises(PRT.PoolContractViolation, match="not before the cutoff"):
+        with pytest.raises(PRT.PoolContractViolation, match="> cutoff"):
             tool.search("q", k=5)
     monkeypatch.setattr(PRT, "http_get", lambda url, **k: (200, {"title": "t", "abstract": "a", "year": year}, 1.0, 1))
     if ok:
         assert tool.open_document("11")["year"] == year
     else:
-        with pytest.raises(PRT.PoolContractViolation, match="not before the cutoff"):
+        with pytest.raises(PRT.PoolContractViolation, match="> cutoff"):
             tool.open_document("11")
 
 
@@ -82,15 +85,40 @@ class _Store:
         return {"edges_meta_sha256": "synthetic"}
 
 
-def test_selection_windows_are_the_two_years_before_the_cutoff():
+def test_selection_windows_are_two_years_ending_at_the_cutoff_year():
     import selection_rule as SR
-    years = {"a": 2019, "b": 2018, "c": 2017, "d": 2016, "e": 2019, "f": 2015}
+    years = {"a": 2019, "b": 2018, "c": 2017, "d": 2016, "e": 2020, "f": 2015}
     citers = {"a": 1, "b": 9, "c": 5, "d": 2, "e": 0, "f": 7}
     P, rec = SR.select_papers(list(years), 3, 2020, store=_Store(years, citers))
     wins = {w["window"]: w["years"] for w in rec["windows"]}
-    assert wins == {0: [2018, 2019], 1: [2016, 2017], 2: [2014, 2015]}
-    assert {g["id"]: g["window"] for g in rec["gate_papers"]} == {"a": 0, "b": 0, "e": 0, "c": 1, "d": 1, "f": 2}
-    assert rec["citer_year_rule"] == "< cutoff" and P[0] == "b"
+    assert wins == {0: [2019, 2020], 1: [2017, 2018], 2: [2015, 2016]}
+    assert {g["id"]: g["window"] for g in rec["gate_papers"]} == {"a": 0, "e": 0, "b": 1, "c": 1, "d": 2, "f": 2}
+    assert rec["citer_year_rule"] == "< cutoff" and P == ["a", "b", "f"]
+
+
+def test_selection_audit_recounts_the_windows_and_the_citers_strictly_before_the_cutoff():
+    import selection_audit as SA
+    import selection_rule as SR
+
+    class Csr:
+        counts = SR.AuthorityStore.counts
+
+        def __init__(self, Y, citers):
+            self.Y = np.asarray(Y, dtype=np.int16)
+            self.bi = np.cumsum([0] + [len(citers.get(p, [])) for p in range(len(Y))]).astype(np.int64)
+            self.bv = np.asarray([c for p in range(len(Y)) for c in citers.get(p, [])], dtype=np.int64)
+
+        def provenance(self):
+            return {"edges_meta_sha256": "synthetic"}
+
+    Y = [SR.NOYEAR, 2020, 2019, 2018, 2017, 2016, 2015, 2020, 2019, 2019, 2018]
+    store = Csr(Y, {1: [7, 8], 2: [8, 9, 10], 3: [7], 4: [8, 9], 5: [10], 6: [7, 7, 7]})
+    order = ["1", "2", "3", "4", "5", "6"]
+    P, rec = SR.select_papers(order, 3, 2020, store=store)
+    assert [g["citers_strict"] for g in rec["gate_papers"]] == [1, 3, 0, 2, 1, 0]
+    assert [g["window"] for g in rec["gate_papers"]] == [0, 0, 1, 1, 2, 2] and P == ["2", "4", "5"]
+    unit = {"order": order, "selection": rec, "cfg": {"gate": rec["gate"], "window_years": rec["window_years"]}}
+    assert SA.independent_rule(unit, 2020, set(), store, 3) == (P, [])
 
 
 def test_campaign_runner_accepts_seeds_zero_one_two_only(task_runs, monkeypatch):

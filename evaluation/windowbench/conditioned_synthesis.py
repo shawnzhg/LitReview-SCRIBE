@@ -1,5 +1,5 @@
 """Entry-conditioned synthesis readouts at the draft and final exits: build writes the conditioned
-tables and their peer band at one view, table normalises and certifies them. Usage: python -m
+tables at one view and the full-length peer band, table normalises and certifies them. Usage: python -m
 windowbench.conditioned_synthesis build|table [--view system|system_trunc] [--dataset ...]."""
 
 from __future__ import annotations
@@ -83,26 +83,28 @@ def build(systems: list[str], out: Path, view: str = "system") -> None:
     df["view"] = view
     suf = _suffix(view)
     df.to_parquet(out / f"conditioned{suf}.parquet", index=False)
+    if view != "system":
+        print(f"wrote {out}/conditioned{suf}.parquet ({df.system.nunique()} systems, view {view})")
+        return
     hrows = []
     for t in tasks:
         g = G.setdefault(t, graphs.load(t))
         for p in [t] + peers.peers(t):
-            m = _induced(f"human:{p}", t, view)
+            m = _induced(f"human:{p}", t)
             if m is None:
                 continue
             gp = graphs.load(p)
             for r in _rows_for(f"human:{p}", t, set(map(str, gp.pmids)), g, m):
                 hrows.append({**r, "source_review": p})
     H = pd.DataFrame(hrows)
-    H.to_parquet(out / f"conditioned_human{suf}.parquet", index=False)
-    print(f"wrote {out}/conditioned{suf}.parquet ({df.system.nunique()} systems) and conditioned_human{suf}.parquet "
+    H.to_parquet(out / "conditioned_human.parquet", index=False)
+    print(f"wrote {out}/conditioned.parquet ({df.system.nunique()} systems) and conditioned_human.parquet "
           f"({H.source_review.nunique() if len(H) else 0} reviews)")
 
 
 def load(out: Path, view: str = "system"):
-    suf = _suffix(view)
-    df = pd.read_parquet(out / f"conditioned{suf}.parquet")
-    hp = out / f"conditioned_human{suf}.parquet"
+    df = pd.read_parquet(out / f"conditioned{_suffix(view)}.parquet")
+    hp = out / "conditioned_human.parquet"
     H = pd.read_parquet(hp) if hp.exists() else pd.DataFrame()
     return df, H
 
@@ -124,7 +126,7 @@ def table(dataset: str, with_ours: str | None, out: Path, alpha: float | None = 
     systems = _systems_for(dataset, with_ours)
     df, H = load(out, view)
     if H.empty:
-        raise SystemExit(f"the peer band of view {view} is missing in {out}: run `build --view {view}`")
+        raise SystemExit(f"{out}/conditioned_human.parquet is missing: the peer band comes from `build --view system`")
     Z = calibrate(df, H)
     alpha = alpha or C.REGISTERED["alpha"]
     res = {}

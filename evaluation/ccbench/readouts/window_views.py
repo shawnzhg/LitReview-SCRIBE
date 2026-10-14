@@ -7,7 +7,7 @@ import re
 from dataclasses import replace
 
 from ccbench import paths
-from ccbench.adapters.common import WORD_RE, split_sentences, word_count
+from ccbench.adapters.common import word_count
 from ccbench.gt import graphs
 from ccbench.gt.units import Units
 from ccbench.ingest import agent_runs
@@ -129,7 +129,7 @@ def human_view(hro: Rollout, window: str) -> tuple[Rollout | None, set[str]]:
     if window in ("writing", "system", "retrieval"):
         return hro, set()
     if window == "system_trunc":
-        return truncated_view(hro), set()
+        return None, set()
     if window == "synthesis":
         claims = [{"id": c.id, "text": c.text, "pmids": c.pmids} for c in g.claims]
         rels = [{"src": e.src, "tgt": e.tgt} for e in g.edges]
@@ -145,60 +145,24 @@ def human_view(hro: Rollout, window: str) -> tuple[Rollout | None, set[str]]:
     raise ValueError(window)
 
 
-def _cut(text: str, k: int) -> str:
-    if k <= 0:
-        return ""
-    ms = list(WORD_RE.finditer(text))
-    return text if len(ms) <= k else text[: ms[k - 1].end()]
-
-
-def _cut_section_text(text: str, kept: list[Sentence], n_complete: int) -> str:
-    paras, n = [], 0
-    for p in re.split(r"\n\s*\n", text):
-        if not p.strip():
-            continue
-        c = len(split_sentences(re.sub(r"\[[^\]]*\]", "", p)))
-        if n + c > n_complete:
-            break
-        paras.append(p)
-        n += c
-    rest = " ".join(s.text for s in kept[n:])
-    return "\n\n".join(paras + ([rest] if rest else []))
-
-
-def truncated_view(ro: Rollout) -> Rollout:
+def truncated_view(ro: Rollout) -> Rollout | None:
     tw = ro.context.target_words or 0
     if ro.is_bot or not ro.report or not tw or ro.report.words <= tw:
         return ro
-    sents, total, cut = [], 0, False
-    for s in ro.report.sentences:
-        n = word_count(s.text)
-        if total + n <= tw:
-            sents.append(s)
-            total += n
-            continue
-        head = _cut(s.text, tw - total)
-        if head:
-            sents.append(replace(s, text=head))
-            total, cut = tw, True
-        break
-    last = sents[-1].section if sents else None
-    kept_last = [s for s in sents if s.section == last]
-    n_full = sum(1 for s in ro.report.sentences if s.section == last)
-    secs = []
+    keep, total = [], 0
     for sec in ro.report.sections:
-        if sec["id"] == last:
-            if cut or len(kept_last) < n_full:
-                sec = {**sec, "text": _cut_section_text(sec.get("text") or "", kept_last, len(kept_last) - int(cut))}
-            secs.append(sec)
+        keep.append(sec["id"])
+        total += word_count(re.sub(r"\[[^\]]*\]", "", sec.get("text") or ""))
+        if total >= tw:
             break
-        secs.append(sec)
+    ks = set(keep)
+    sents = [s for s in ro.report.sentences if s.section in ks]
     bib: dict[str, None] = {}
     for s in sents:
         for c in s.cites:
             bib.setdefault(c, None)
-    rep = Report(sections=secs, sentences=sents, bibliography=list(bib), words=total, unresolved_citations=ro.report.unresolved_citations, total_citation_marks=sum(len(s.cites) for s in sents))
-    return replace(ro, report=rep, meta={**ro.meta, "view": "truncated", "truncated_from_words": ro.report.words})
+    rep = Report(sections=[sec for sec in ro.report.sections if sec["id"] in ks], sentences=sents, bibliography=list(bib), words=min(total, ro.report.words), unresolved_citations=ro.report.unresolved_citations, total_citation_marks=sum(len(s.cites) for s in sents))
+    return replace(ro, report=rep, meta={**ro.meta, "view": "truncated", "truncated_from_words": ro.report.words, "kept_sections": len(keep)})
 
 
 def induced_path(system_key: str, task: str, window: str):

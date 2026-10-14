@@ -30,7 +30,7 @@ set -a; . ./site.env; set +a
 export PYTHONPATH=$LITREVIEW_ROOT/evaluation:$PYTHONPATH PYTHONHASHSEED=0
 ```
 
-- `CCBENCH_ENV` is a script you write that sets `PY`, `CCBENCH_ROOT`, `CCBENCH_PARENT` and `CCBENCH_OUT`. `PY` runs the scorer, the benchmark builders and the analysis: torch, sentence-transformers, vllm, pandas, pyarrow, scipy, scikit-learn, statsmodels, networkx, POT, rapidfuzz, PyStemmer, pyyaml, matplotlib.
+- `CCBENCH_ENV` is a script you write that sets `PY`. `PY` runs the scorer, the benchmark builders and the analysis: torch, sentence-transformers, vllm, pandas, pyarrow, scipy, scikit-learn, statsmodels, networkx, POT, rapidfuzz, PyStemmer, pyyaml, matplotlib.
 - `SCRIBE_RUN_PY` harness, `SCRIBE_SERVE_PY` vLLM, `SCRIBE_TRAIN_PY` kvskill training (also pandas, pyarrow, rapidfuzz, pyyaml), `SCRIBE_POOL_PY` pool service (fastapi, uvicorn), `SCRIBE_EMBED_PY` FAISS embedders.
 - Slurm for the `.slurm` files; GPU jobs need `CUDA_HOME` or a `SCRIBE_TOOLCHAIN` script.
 - Tests: `PYTHONDONTWRITEBYTECODE=1 $PY -m pytest -p no:cacheprovider -q tests evaluation/windowbench/tests`.
@@ -44,23 +44,23 @@ $SCRIBE_TRAIN_PY scribe/training/backbone.py prepare $HF_HOME/hub/models--Qwen--
 
 ## Data
 
-`SCRIBE_DATA_ROOT` is one data root: `test50/` (the evaluation tasks and the reference files of their peers) or `train1842/` (the training split). Set `CCBENCH_PARENT=$SCRIBE_DATA_ROOT` and `SCRIBE_RUNS_ROOT=$SCRIBE_DATA_ROOT/<sub>/runs`, where `<sub>` is `CCBENCH_EVAL_SUBDIR` (empty: the root itself). `CCBENCH_ROOT` is searched first and holds the shared score tables in `out/`. Point the other variables of `site.env` at their files in the root.
+Build one data root per profile, `test` (the evaluation tasks and their peers) or `train` (the training split), each with its own `<work>` and `<root>`:
 
+```bash
+huggingface-cli download <org>/BioLitBench --repo-type dataset --revision v1.0 --local-dir <hf>
+huggingface-cli download nomic-ai/nomic-embed-text-v1 --revision 3ac47f125a41961d13b397d0332866be2f9152e1 --local-dir <models>/data/models/nomic-embed-text-v1
+$PY biolitbench/release/fetch_articles.py --snapshot <hf> --profile <profile> --work <work> --email <email>
+$PY biolitbench/release/parse_jats.py --xml <work>/xml --out <work>/articles
+$PY biolitbench/release/fetch_abstracts.py --snapshot <hf> --profile <profile> --work <work> --email <email>
+$PY biolitbench/release/rehydrate.py --snapshot <hf> --root <root> --profile <profile> --articles <work>/articles --abstracts <work>/abstracts.jsonl
+$PY biolitbench/release/prepare_root.py --snapshot <hf> --profile <profile> --root <root> --parent <models>
+$PY biolitbench/release/verify_data.py --root <root> --profile <profile> --snapshot <hf> --parent <models>
 ```
-$SCRIBE_DATA_ROOT/
-  tasks.txt                                     task ids
-  inputs/<task>/                                task_spec.json, task.json, bundle.json
-  data/pool_corpus/                             corpus shards, pool_manifest.json, cutoffs.json, campaign50.json
-  data/pool_index/bm25/, data/pool_index/edges/ BM25 index, citation-edge store
-  data/models/nomic-embed-text-v1/
-  data/reference_corpus/                        enriched references, claim grounding
-  data_2000/dataset_2000/                       graphs/, refs_enriched/, manifests/
-  biolit-bench/results_2000/benchmark_claims/   claims and review structure per task
-  <sub>/runs/                                   taskspecs/, gold/, canonical/, oracle/ and the system runs
-  <sub>/analysis/, <sub>/schemas/, <sub>/prereg/
-  same_pool/                                    budget_caps.json, kcap.json
-  out_seed/                                     initial content of $CCBENCH_OUT
-```
+
+- `fetch_articles.py` uses the PMC Cloud Service, then E-utilities (`--route cloud|eutils` to force one); `fetch_abstracts.py` uses E-utilities. Pass `--email`, add `--api-key` for a higher rate, and run long fetches on weekends or 21:00–05:00 US Eastern (outside these hours the scripts stop a series of more than 100 requests unless `--allow-peak-hours`). NCBI policies: https://www.ncbi.nlm.nih.gov/home/about/policies/.
+- The retrieved text stays under the copyright of its publishers and the PMC and NLM terms (https://pmc.ncbi.nlm.nih.gov/about/copyright/, https://www.nlm.nih.gov/databases/download/terms_and_conditions.html).
+- `prepare_root.py` writes `<root>/site.env`, which `site.env` loads from `SCRIBE_DATA_ROOT`; it sets the root's paths, `SCRIBE_REHYDRATE_REPORT=<root>/rehydrate_report.json`, the drift report of `rehydrate.py` that the runner and `make_baseline_inputs.py` read, and `CCBENCH_OUT=<root>/scores`, the scorer's copy of the frozen tables in `<root>/out` that `verify_data.py` checks.
+- Set `SCRIBE_DATA_ROOT` in `site.env` to the test root and `SCRIBE_EMBED_MODEL_DIR` to `<models>/data/models/nomic-embed-text-v1`, then load `site.env` again. For the steps on the train root, load a copy of `site.env` with `SCRIBE_DATA_ROOT=<train root>` in a new shell.
 
 ## Benchmark construction
 
@@ -94,18 +94,12 @@ $PY biolitbench/pool/budget/build_kcap.py --caps <budget_caps.json> --rollouts $
 
 ## Training the planning carrier (RL from skill: init, seed, GRPO)
 
-On the `test50/` root:
+On the train root:
 
 ```bash
-$PY scribe/training/build_train_tasks.py --check --train_gold <train1842 runs>/gold/train
+$PY scribe/training/build_train_tasks.py --check
 OUT_ROOT=<dir> bash scribe/training/launch/01_init_theta.sh
 export SCRIBE_THETA0=<dir>/initial_carrier
-```
-
-On the `train1842/` root, with `SCRIBE_EVAL_TASKS` still the `test50/` task list:
-
-```bash
-$PY biolitbench/tasks/build_canonical_bundles.py --split train
 set -a; . scribe/launchers/configs/scribe_untrained.env; set +a
 TASKS_FILE=$LITREVIEW_ROOT/configs/train_tasks/train_candidates.txt LEVEL=<t> sbatch --gres=gpu:1 --export=ALL scribe/launchers/run_fixed_input.slurm
 export BASE_CACHE=$SCRIBE_RUNS_ROOT/level<t>/SCRIBE/bundle_entry TASKS_FILE=<train list>
@@ -115,14 +109,14 @@ $PY scribe/training/precompute_train_bands.py --tasks $TASKS_FILE --embed_url ht
 OUT_ROOT=<dir> sbatch --export=ALL scribe/training/launch/02_seed_init.slurm
 ```
 
-On the `test50/` root, after SCRIBE (untrained) is run and scored under fixed input (sections below):
+On the test root, after SCRIBE (untrained) is run and scored under fixed input (sections below):
 
 ```bash
 $PY -m windowbench.run --ours <untrained fixed-input key> --opponents <published-pipeline fixed-input keys> --windows planning --out <cells dir>
 $PY scribe/training/reward_weights.py --cells <cells dir>/cells.csv --out <targets.json>
 ```
 
-On the `train1842/` root:
+On the train root:
 
 ```bash
 OUT_ROOT=<dir> READOUT_TARGETS=<targets.json> BANDS=<bands.json> sbatch --export=ALL scribe/training/launch/03_grpo.slurm
@@ -161,7 +155,6 @@ Per-arm settings: `scribe/harness/baselines/README.md`. Commercial agents, one `
 ## Scoring
 
 ```bash
-mkdir -p $CCBENCH_OUT && cp -rL $SCRIBE_DATA_ROOT/out_seed/. $CCBENCH_OUT/
 $PY -m ccbench.build                                    # same pool
 $PY -m ccbench.build --campaign campaign50_ref          # fixed input
 $PY -m windowbench.draft_rollouts build

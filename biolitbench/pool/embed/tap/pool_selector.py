@@ -1,5 +1,6 @@
 """Restricts the FAISS searches of AutoSurvey and SurveyForge to the row ids in
-POOL_SELECTOR_CUTOFF_NPY: papers published before the task cutoff, without the evaluated review."""
+POOL_SELECTOR_CUTOFF_NPY: papers published in or before the task cutoff year, without the evaluated
+review."""
 
 from __future__ import annotations
 
@@ -84,9 +85,9 @@ def _id_year(sid):
     return int(pre[:4]) if len(pre) == 6 and pre.isdigit() else None
 
 
-def _visible(sid, cut, review):
+def _visible(sid, cut, review, undated):
     y = _id_year(sid)
-    return y is not None and y < cut and str(sid).split(".", 1)[-1] != review
+    return (y <= cut if y else undated) and str(sid).split(".", 1)[-1] != review
 
 
 def _survey_selector(inst, cut):
@@ -97,10 +98,10 @@ def _survey_selector(inst, cut):
     import numpy as np
 
     review = _review_pmid()
-    allowed = [pos for pos, sid in inst.index_to_id.items() if _visible(sid, cut, review)]
+    allowed = [pos for pos, sid in inst.index_to_id.items() if _visible(sid, cut, review, False)]
     sel = faiss.IDSelectorBatch(np.asarray(allowed, dtype="int64"))
     inst._pool_survey_sel = (cut, sel)
-    sys.stderr.write("[pool_selector] survey-db selector: %d/%d ids before %d\n"
+    sys.stderr.write("[pool_selector] survey-db selector: %d/%d ids <= %d\n"
                      % (len(allowed), len(inst.index_to_id), cut))
     return sel
 
@@ -127,7 +128,7 @@ def patch_surveyforge_retrieve(cls) -> int:
             out = []
             short = False
             for row in res:
-                keep = [d for d in row if _visible(getattr(d, "metadata", {}).get("id"), cut, review)]
+                keep = [d for d in row if _visible(getattr(d, "metadata", {}).get("id"), cut, review, True)]
                 if len(keep) < top_k and len(row) >= top_k * mult:
                     short = True
                 out.append(keep[:top_k])

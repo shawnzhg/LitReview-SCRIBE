@@ -134,6 +134,7 @@ def one(phase, task, system, mode, seed, level, client, entry_mode, client_write
                 row.update(allowlist_sha256=ds.get("allowlist_sha256"),
                            n_without_abstract=ds.get("n_without_abstract"),
                            n_year_unknown=ds.get("n_year_unknown"),
+                           n_text_drift=ds.get("n_text_drift", 0),
                            delivery_ok=bool(dj.get("ok")) if dj else False)
                 if dj and not dj.get("ok"):
                     row["error"] = "harness_failure:bundle_delivery"

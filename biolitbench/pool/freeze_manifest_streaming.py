@@ -37,12 +37,14 @@ def main():
     run(f"sort -S 700M -T {TMP} -u {raw} -o {TMP}/corpus_pmids.sorted")
 
     task_dirs = sorted(os.listdir(TASKS))
-    gold, cutoffs = {}, {}
+    gold, cutoffs, gold_task_cut = {}, {}, {}
     for t in task_dirs:
         d = json.load(open(os.path.join(TASKS, t, "refs.json")))
         cutoffs[t] = d["cutoff_year"]
         for r in d["refs"]:
-            gold.setdefault(str(r["pmid"]), r)
+            p = str(r["pmid"])
+            gold.setdefault(p, r)
+            gold_task_cut[p] = min(gold_task_cut.get(p, 9999), d["cutoff_year"])
     with open(f"{TMP}/gold_pmids.sorted", "w") as f:
         f.write("\n".join(sorted(gold)) + "\n")
     missing = subprocess.run(f"comm -23 {TMP}/gold_pmids.sorted {TMP}/corpus_pmids.sorted",
@@ -51,7 +53,7 @@ def main():
     print(f"[freeze] gold={len(gold)} missing={len(missing)}", flush=True)
 
     fetched = G.by_pmids(missing)
-    undated = 0
+    fallback = 0
     last = max(int(os.path.basename(sh)[len("corpus_"):-len(".jsonl.gz")]) for sh in shards)
     supplement = os.path.join(POOL, "corpus_%04d.jsonl.gz" % (last + 1))
     with gzip.open(supplement + ".part", "wt") as f:
@@ -59,7 +61,8 @@ def main():
             rec = gold[p]; info = fetched.get(p) or {}
             y = info.get("year")
             y = int(y) if (y or "").strip().isdigit() else None
-            undated += y is None
+            if y is None:
+                y = gold_task_cut[p]; fallback += 1
             f.write(json.dumps({"pmid": p, "title": rec.get("title"),
                                 "abstract": rec.get("abstract") or "", "year": y,
                                 "doi": rec.get("doi"), "source": "gold_supplement"},
@@ -82,7 +85,7 @@ def main():
     manifest = {
         "schema": "pool_manifest/1.0",
         "corpus_docs": n, "gold_pmids": len(gold), "gold_missing_from_export": len(missing),
-        "gold_supplement_undated": undated,
+        "gold_supplement_year_fallback_to_task_cutoff": fallback,
         "pool_total": total, "pool_pmids_sha256": sha,
         "year_histogram": {str(k): years[k] for k in sorted(years, key=lambda y: (y is None, y or 0))},
         "export_state": st, "n_shards": len(shards),

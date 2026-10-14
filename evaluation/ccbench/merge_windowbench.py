@@ -31,11 +31,6 @@ def load(root: Path = WB) -> tuple[pd.DataFrame, dict]:
     return z, clusters
 
 
-def task_composite(s: pd.DataFrame, axes: list[str]) -> pd.DataFrame:
-    P = s[s.axis.isin(axes)].pivot_table(index=["system", "task"], columns="axis", values="z", aggfunc="mean").reindex(columns=axes)
-    return P.mean(axis=1).where(P.notna().all(axis=1)).unstack("task")
-
-
 def composite(z: pd.DataFrame, obs: str, names: list[str]) -> tuple[pd.DataFrame, list[str]]:
     s = z[(z.obs == obs) & z.system.isin(names)]
     if s.empty:
@@ -45,7 +40,8 @@ def composite(z: pd.DataFrame, obs: str, names: list[str]) -> tuple[pd.DataFrame
     odd = {k: sorted(v - set(axes)) for k, v in per.items() if set(v) != set(axes)}
     if odd:
         raise ValueError(f"{obs}: axis sets differ across the tier, composite not comparable: {odd}")
-    U = task_composite(s, axes)
+    s = s[s.axis.isin(axes)]
+    U = s.pivot_table(index="system", columns="task", values="z", aggfunc="mean")
     return U.reindex([n for n in names if n in U.index]), axes
 
 

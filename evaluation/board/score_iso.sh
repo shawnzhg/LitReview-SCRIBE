@@ -21,7 +21,9 @@ esac
 { [ -n "${CCBENCH_ENV:-}" ] && [ -f "$CCBENCH_ENV" ]; } || die "set CCBENCH_ENV to the site environment script"
 source "$CCBENCH_ENV"
 { [ -n "${PY:-}" ] && [ -n "${CCBENCH_ROOT:-}" ] && [ -n "${CCBENCH_PARENT:-}" ]; } || die "$CCBENCH_ENV must define PY, CCBENCH_ROOT and CCBENCH_PARENT"
-SHARED_OUT=$CCBENCH_ROOT/out
+[ -n "${CCBENCH_SHARED_OUT:-}" ] || die "set CCBENCH_SHARED_OUT to the shared score tables (prepare_root.py writes it to <root>/site.env)"
+SHARED_OUT=$CCBENCH_SHARED_OUT
+export CCBENCH_SHARED_OUT
 [ -f "$SHARED_OUT/E1/conformance.csv" ] || die "$SHARED_OUT holds no shared tables"
 [ -n "${ISO_ROOT:-}" ] || die "set ISO_ROOT to the directory that receives the private output roots"
 ISO_ROOT=$(realpath -m "$ISO_ROOT")

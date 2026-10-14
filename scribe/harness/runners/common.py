@@ -23,6 +23,25 @@ SCHEMAS = ROOT / "biolitbench" / "schemas"
 RUNS = env_path("SCRIBE_RUNS_ROOT")
 
 
+DEHYDRATED_FORMAT_PREFIX = "biolit-dehydrated/"
+
+
+class DehydratedDataError(RuntimeError):
+    def __init__(self, path):
+        self.path = str(path)
+        super().__init__(f"{path} is a dehydrated release file; run biolitbench/release/rehydrate.py on this data root first")
+
+
+def check_not_dehydrated(obj, path):
+    if isinstance(obj, dict) and str(obj.get("format", "")).startswith(DEHYDRATED_FORMAT_PREFIX):
+        raise DehydratedDataError(path)
+    return obj
+
+
+def read_json(path):
+    return check_not_dehydrated(json.loads(Path(path).read_text()), path)
+
+
 def sha256_str(s: str) -> str:
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Writes, for each task, the FAISS row ids of the pool papers published before its cutoff, without
-the evaluated review, as <cutoff>.<task>.npy. Usage: python cutoff_views.py --task-cutoffs <json>
---gold <dir> --db <faiss dir> --out <dir>."""
+"""Writes, for each task, the FAISS row ids of the dated pool papers published in or before its
+cutoff year, without the evaluated review, as <cutoff>.<task>.npy. Usage: python cutoff_views.py
+--task-cutoffs <json> --gold <dir> --db <faiss dir> --out <dir>."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def build(task_cutoffs: str, gold: str, db: str, out: str) -> int:
         raise SystemExit("id_year.npy %s and id_pmid.npy %s must be 1-D and aligned" % (years.shape, pmids.shape))
     os.makedirs(out, exist_ok=True)
     for task, year in sorted(cutoffs.items()):
-        mask = (years > 0) & (years < year) & (pmids != int(reviews[task]))
+        mask = (years > 0) & (years <= year) & (pmids != int(reviews[task]))
         ids = (np.nonzero(mask)[0] + 1).astype("int64")
         if ids.size == 0:
             raise SystemExit("%s: cutoff %d selects no pool paper" % (task, year))

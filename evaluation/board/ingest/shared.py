@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO / "evaluation"))
 from ccbench.adapters.common import HEADER_RE
 
 X = Path(os.environ.get("COMMERCIAL_OUT", ""))
-SHARED_OUT = Path(os.environ.get("CCBENCH_ROOT", "")) / "out"
+SHARED_OUT = Path(os.environ.get("CCBENCH_SHARED_OUT") or "/nonexistent/CCBENCH_SHARED_OUT")
 TASKS_FILE = "tasks.json"
 MCP_K = 20
 PMID_MIN_DIGITS = 5
@@ -218,6 +218,9 @@ def build(runs: Path, keys_by_cond: dict[str, str], adapt, keys: list[str]) -> i
     from ccbench import paths
     from ccbench.build import _row, rollout_path
     out = Path(paths.OUT).resolve()
+    if not SHARED_OUT.is_dir():
+        print(f"INGEST REFUSED: CCBENCH_SHARED_OUT={SHARED_OUT} is not the shared score tables", file=sys.stderr)
+        return 2
     if out == SHARED_OUT.resolve() or str(out).startswith(str(SHARED_OUT.resolve())):
         print(f"INGEST REFUSED: CCBENCH_OUT={out} is the SHARED out; build writes only into a private out", file=sys.stderr)
         return 2

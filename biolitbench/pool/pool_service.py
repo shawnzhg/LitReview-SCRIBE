@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Offline HTTP service that serves, per task, only the pool papers published before the cutoff and
-never the evaluated review, logging every call. Usage: python pool_service.py --port <port> --index
-<bm25 dir> --cutoffs <json> --gold <dir> --log <file>."""
+"""Offline HTTP service that serves, per task, only the pool papers published in or before the
+cutoff year and never the evaluated review, logging every call. Usage: python pool_service.py
+--port <port> --index <bm25 dir> --cutoffs <json> --gold <dir> --log <file>."""
 
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ class State:
         return allow
 
     def visible(self, task: str, doc) -> bool:
-        if doc is None or doc.get("year") is None or int(doc["year"]) >= self.cutoffs[task]:
+        if doc is None or doc.get("year") is None or int(doc["year"]) > self.cutoffs[task]:
             return False
         if str(doc["pmid"]) == self.reviews[task]:
             return False
@@ -244,9 +244,10 @@ class State:
                 if i >= len(ix.pmid_sorted) or int(ix.pmid_sorted[i]) != int(pk):
                     continue
                 yr = ix.year_of(pm)
-                if yr is None or yr >= cutoff:
-                    continue
-                if ymin is not None and yr < ymin or ymax is not None and yr > ymax:
+                if yr is None:
+                    if ymin is not None:
+                        continue
+                elif yr > cutoff or ymin is not None and yr < ymin or ymax is not None and yr > ymax:
                     continue
                 kept.append({"pmid": str(pm), "score": 0.0,
                              "_shard": int(ix.pmid_shard[i]), "_idx": int(ix.pmid_idx[i])})
@@ -307,7 +308,7 @@ def visible_neighbours(task: str, neigh: np.ndarray, limit) -> np.ndarray:
         return neigh
     scan = neigh[:EDGE_SCAN_CAP]
     years = ST.index.years_of_many(scan)
-    ok = scan[(years != UNDATED) & (years < ST.cutoffs[task]) & (scan.astype(np.int64) != int(ST.reviews[task]))]
+    ok = scan[(years != UNDATED) & (years <= ST.cutoffs[task]) & (scan.astype(np.int64) != int(ST.reviews[task]))]
     return ok if limit is None or ok.size <= limit else ok[:limit]
 
 
@@ -687,7 +688,7 @@ def page(task: str, pmid: str):
     logged(task, "page", {"pmid": pmid}, cutoff,
            ([{"pmid": doc["pmid"], "score": None}] if doc else []), t.ms)
     if doc is None:
-        raise HTTPException(status_code=404, detail="not in pool, not before the task cutoff, or the evaluated review")
+        raise HTTPException(status_code=404, detail="not in pool, after the task cutoff, or the evaluated review")
     abstract = _esc(doc.get("abstract"))
     doi = doc.get("doi")
     return HTMLResponse(_PAGE_HTML.format(
@@ -704,7 +705,7 @@ def pdf(task: str, pmid: str):
     logged(task, "pdf", {"pmid": pmid}, cutoff,
            ([{"pmid": doc["pmid"], "score": None}] if doc else []), t.ms)
     if doc is None:
-        raise HTTPException(status_code=404, detail="not in pool, not before the task cutoff, or the evaluated review")
+        raise HTTPException(status_code=404, detail="not in pool, after the task cutoff, or the evaluated review")
     return Response(content=_minimal_pdf(doc), media_type="application/pdf")
 
 

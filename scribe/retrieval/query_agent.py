@@ -36,7 +36,7 @@ LEDGER_QUERY_CHARS = 200
 
 QUERY_STEP = """TOPIC: {question}
 FIELD/SCOPE: {topic}
-PUBLICATION CUTOFF: {cutoff} (only work published before this year exists for you)
+PUBLICATION CUTOFF: {cutoff} (nothing published after this year exists for you)
 EXCLUDED: {exclusion}
 
 SEARCHES USED: {used}/{cap}   DISTINCT PAPERS FOUND SO FAR: {n_pool}
@@ -53,7 +53,7 @@ or
 
 QUERY_SUBTOPIC = """TOPIC: {question}
 FIELD/SCOPE: {topic}
-PUBLICATION CUTOFF: {cutoff} (only work published before this year exists for you)
+PUBLICATION CUTOFF: {cutoff} (nothing published after this year exists for you)
 EXCLUDED: {exclusion}
 
 PROPOSE THE SUBTOPICS of this review before any search is run. The search budget ({budget} searches) will be

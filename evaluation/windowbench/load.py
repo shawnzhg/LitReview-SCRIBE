@@ -1,5 +1,5 @@
 """Loads the score table into one Data object with the draft, planning-exit and planning-axis rows,
-the recorded failures and the peer-band calibration of each view."""
+the recorded failures and the frozen full-length peer band that normalises every view."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ DOWNSTREAM = {"retrieval": ["retrieval", "synthesis", "planning", "writing", "dr
               "draft": ["draft", "draft_trunc", "system", "system_trunc"],
               "system": ["system", "system_trunc"]}
 FINAL_WINDOWS = ("writing", "draft", "draft_trunc", "system", "system_trunc")
-TRUNC_WINDOWS = ("system_trunc", "draft_trunc")
 DRAFT_SUFFIX = ".draft"
 
 
@@ -192,7 +191,6 @@ class Data:
         self.stage_of = self.scores.drop_duplicates("readout").set_index("readout").stage.to_dict()
         self.direction_of = self.scores.drop_duplicates("readout").set_index("readout").direction.to_dict()
         self.cal_e10 = pd.read_csv(C.SOURCES["calibration_e10"])
-        self._cal: dict = {}
         mem = json.load(open(C.SOURCES["membership"]))
         self.non_discriminating = set(mem["non_discriminating"])
         self.humans_incomparable = set(mem["humans_incomparable"])
@@ -275,19 +273,7 @@ class Data:
         self.outline_axis_loaded = True
 
     def calibration(self, window: str) -> pd.DataFrame:
-        if window not in TRUNC_WINDOWS:
-            return self.cal_e10
-        if "trunc" not in self._cal:
-            H = self.human[self.human.window == "system_trunc"]
-            if H.empty:
-                raise ValueError("the score table holds no peer rows at window system_trunc; "
-                                 "run ccbench.score_windows --peers --truncate")
-            cal = self.NRM.calibration(H[["task", "readout", "value", "source_review"]])
-            if len(self.outline_axis_human):
-                reads = C.REGISTERED["planning_axis_readouts"]
-                cal = pd.concat([cal[~cal.readout.isin(reads)], self.NRM.calibration(self.outline_axis_human)], ignore_index=True)
-            self._cal["trunc"] = cal
-        return self._cal["trunc"]
+        return self.cal_e10
 
     def z_matrix(self, window: str, systems: list[str]) -> pd.DataFrame:
         t = self.scores[(self.scores.window == window) & self.scores.system.isin(systems)]

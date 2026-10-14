@@ -1,7 +1,6 @@
 """Converts each task's reference list into the row ids of the AutoSurvey FAISS database for fixed
-input, keeping only rows in the task's cutoff view (a known year before the cutoff, the evaluated
-review removed). Usage: python make_allowlists_idx.py --arm autosurvey --allowlists <dir>
---pool-index <dir> --cutoff-views <dir>."""
+input, without the evaluated review named in the cutoff views' task_to_cutoff.json. Usage: python
+make_allowlists_idx.py --arm autosurvey --allowlists <dir> --pool-index <dir> --cutoff-views <dir>."""
 
 from __future__ import annotations
 
@@ -19,20 +18,21 @@ def load_map(arm: str, pool_index: Path) -> dict[str, int]:
         return json.load(f)
 
 
-def cutoff_view(views: Path, task: str) -> set[int]:
-    hits = sorted(views.glob(f"[0-9][0-9][0-9][0-9].{task}.npy"))
-    if len(hits) != 1:
-        raise SystemExit(f"expected one cutoff view <cutoff>.{task}.npy in {views}, found {len(hits)}")
-    return {int(x) for x in np.load(hits[0])}
+def review_pmid(views: Path, task: str) -> str:
+    p = views / "task_to_cutoff.json"
+    ent = (json.loads(p.read_text())["tasks"] if p.is_file() else {}).get(task) or {}
+    if not ent.get("review_pmid"):
+        raise SystemExit(f"no review_pmid for {task} in {p}")
+    return str(ent["review_pmid"])
 
 
 def build(arm: str, allow_dir: Path, out_dir: Path, pool_index: Path, views: Path) -> None:
     m = load_map(arm, pool_index)
     n = 0
     for src in sorted(allow_dir.glob("*.json")):
-        visible = cutoff_view(views, src.stem)
+        review = review_pmid(views, src.stem)
         pmids = [str(x) for x in json.load(open(src))]
-        idx = [m[p] for p in pmids if p in m and int(m[p]) in visible]
+        idx = [m[p] for p in pmids if p in m and p != review]
         np.save(out_dir / f"{src.stem}.{arm}.idx.npy", np.array(sorted(idx), dtype=np.int64))
         n += 1
     print(f"{arm}: wrote {n} index-space allowlists -> {out_dir}")
@@ -46,7 +46,7 @@ def main(argv=None):
     ap.add_argument("--pool-index", required=True,
                     help="directory holding autosurvey_db/ (biolitbench/pool/embed/assemble_db.py)")
     ap.add_argument("--cutoff-views", required=True,
-                    help="the <cutoff>.<task>.npy views of biolitbench/pool/embed/cutoff_views.py (CUTOFF_DIR)")
+                    help="biolitbench/pool/embed/cutoff_views.py output (CUTOFF_DIR); names each task's review")
     a = ap.parse_args(argv)
     d = Path(a.allowlists)
     build(a.arm, d, d, Path(a.pool_index), Path(a.cutoff_views))

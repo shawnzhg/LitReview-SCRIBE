@@ -1,6 +1,6 @@
-"""Writes the per-task fixed-input reference lists: the review's resolved references dated before its
-publication cutoff, without the evaluated review itself. Usage: python -m ccbench.fair.make_allowlists
---out <dir>."""
+"""Writes the per-task fixed-input reference lists: the review's resolved references published in or
+before its cutoff year or undated, without the evaluated review itself. Usage: python -m
+ccbench.fair.make_allowlists --out <dir>."""
 
 from __future__ import annotations
 

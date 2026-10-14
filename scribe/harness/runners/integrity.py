@@ -42,10 +42,10 @@ def check_bundle(bundle, spec=None):
                           "bundle is bound to a different TaskSpec than the one supplied"))
         cut = spec["publication_cutoff"]
         late = [p["paper_id"] for p in bundle["papers"]
-                if p.get("year") is not None and int(p["year"]) >= cut]
+                if p.get("year") is not None and int(p["year"]) > cut]
         if late:
             out.append(_f("bundle.post_cutoff_paper",
-                          f"papers not published before the cutoff {cut}: {late[:5]}", len(late)))
+                          f"papers published after the cutoff {cut}: {late[:5]}", len(late)))
     if bundle.get("content_hash") != content_hash(bundle):
         out.append(_f("bundle.hash_stale", "content_hash does not match the body"))
     return out

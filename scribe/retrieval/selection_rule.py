@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Selection rule of the evidence bundle: takes the top of the run's own ranking, groups it into
-two-year windows before the cutoff, allots the seats proportionally and fills each window by
+two-year windows ending at the cutoff year, allots the seats proportionally and fills each window by
 in-pool citation count with citers strictly before the cutoff."""
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ def select_papers(order, K, cutoff, exclude_ids=(), gate=GATE, window_years=WIND
     excl_arr = np.array(sorted(int(x) for x in excl if x.isdigit()), dtype=np.int64)
     v, deg, yr = store.counts(G, cut, excl_arr)
     idx = np.arange(n)
-    win = np.where(yr == NOYEAR, NOYEAR_WINDOW, (cut - 1 - yr.astype(np.int64)) // wy)
+    win = np.where(yr == NOYEAR, NOYEAR_WINDOW, (cut - yr.astype(np.int64)) // wy)
     windows = []
     if n <= K:
         sel = [int(i) for i in idx]
@@ -171,7 +171,7 @@ def select_papers(order, K, cutoff, exclude_ids=(), gate=GATE, window_years=WIND
             ii = ii[np.lexsort((ii, -v[ii]))]
             sel += [int(i) for i in ii[:s]]
             windows.append({"window": int(w), "years": (None if int(w) == NOYEAR_WINDOW else
-                                                       [cut - 1 - int(w) * wy - (wy - 1), cut - 1 - int(w) * wy]),
+                                                       [cut - int(w) * wy - (wy - 1), cut - int(w) * wy]),
                             "n_gate": int(c_), "quota": float(qq), "seats": int(s),
                             "min_count_selected": int(v[ii[:s]].min()) if s else None})
     P = [G[i] for i in sel]
@@ -294,7 +294,7 @@ def open_and_build(tool, spec, log, P, decision_reason=DECISION_REASON):
                                      "rank_from_tool": p.get("rank"),
                                      "route": p.get("route") or "both"},
             "decision": "include", "decision_reason": decision_reason,
-            "post_cutoff": bool(p.get("year") and int(p["year"]) >= spec["publication_cutoff"])})
+            "post_cutoff": bool(p.get("year") and int(p["year"]) > spec["publication_cutoff"])})
     return papers, evidence
 
 

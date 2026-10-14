@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Shared code of the pool index: tokenizer, BM25 weights, record encoding, shard iteration, the
-paper-id rule and a memory-mapped searcher that serves only dated papers published before the
-cutoff year."""
+paper-id rule and a memory-mapped searcher that applies the publication-year cutoff."""
 
 from __future__ import annotations
 
@@ -147,10 +146,10 @@ class PoolIndex:
         tids, qtf = self._term_ids(query)
         if tids is None:
             return [], 0
-        hi_year = int(cutoff) - 1
+        hi_year = int(cutoff)
         if year_max is not None:
             hi_year = min(hi_year, int(year_max))
-        lo_year = UNDATED + 1 if year_min is None else max(UNDATED + 1, int(year_min))
+        lo_year = UNDATED if year_min is None else int(year_min)
         excl = np.asarray(sorted(int(x) for x in exclude), dtype=np.int64)
 
         out = []

@@ -76,7 +76,7 @@ def independent_rule(rec, cut, exclude, store, K):
         return G, f
     win = {}
     for r, p, y, st in rows:
-        win.setdefault(10 ** 6 if y is None else (cut - 1 - y) // wy, []).append((r, p, st))
+        win.setdefault(10 ** 6 if y is None else (cut - y) // wy, []).append((r, p, st))
     ws = sorted(win)
     q = {w: K * len(win[w]) / len(G) for w in ws}
     seats = {w: int(q[w] // 1) for w in ws}

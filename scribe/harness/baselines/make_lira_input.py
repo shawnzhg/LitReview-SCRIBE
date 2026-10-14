@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Renders each task's reference list in LiRA's bibliography format, keeping the references with an
-abstract, an integer PMID and a year before the task's cutoff. Usage: python make_lira_input.py
---inputs <dir> --out <dir>."""
+abstract, an integer PMID and no year after the task's cutoff, and carries the inputs' text_drift.json
+along. Usage: python make_lira_input.py --inputs <dir> --out <dir>."""
 
 from __future__ import annotations
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 
@@ -16,7 +17,7 @@ def lira_surveys(inputs):
         cutoff = int(data["cutoff_year"])
         refs = []
         for n, r in enumerate(data["refs"], 1):
-            if not (r.get("abstract") or "").strip() or r.get("year") is None or int(r["year"]) >= cutoff:
+            if not (r.get("abstract") or "").strip() or r.get("year") is not None and int(r["year"]) > cutoff:
                 dropped += 1
                 continue
             try:
@@ -42,8 +43,11 @@ def main(argv=None):
     od = Path(a.out) / "scireviewgen"
     od.mkdir(parents=True, exist_ok=True)
     (od / "full_data_abs.json").write_text(json.dumps(surveys))
+    drift = Path(a.inputs) / "text_drift.json"
+    if drift.is_file():
+        shutil.copyfile(drift, od / "text_drift.json")
     print(json.dumps({"surveys": len(surveys), "refs_dropped": dropped,
-                      "out": str(od / "full_data_abs.json")}))
+                      "out": str(od / "full_data_abs.json"), "text_drift": "copied" if drift.is_file() else "absent"}))
 
 
 if __name__ == "__main__":

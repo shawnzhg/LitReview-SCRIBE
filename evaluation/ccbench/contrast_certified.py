@@ -17,12 +17,11 @@ from scipy import stats
 from ccbench import paths
 from ccbench.config import prereg
 from ccbench.fair.units import same_model
-from ccbench.merge_windowbench import WB, cluster_t, load, task_composite
+from ccbench.merge_windowbench import WB, cluster_t, load
 
 PANEL = ["autosurvey", "surveyforge", "surveyg", "sgi", "llmxmr", "lira", "drtulu"]
 ENTRY = {s: "frozen pool" for s in PANEL} | {"lira": "review bibliography"}
 DELTA = 0.05
-MIN_TASKS = 10
 BACKBONE_CHANGE = "no finite radius: backbone change outside the scaffold window"
 ENTRY_UNMEASURED = "no finite radius: entry mismatch without a measured radius"
 ENTRY_EXCEEDS = "eps_out > eps_fair: entry mismatch"
@@ -56,18 +55,17 @@ def contrast(obs: str = "system_trunc", root: Path = WB, radius: dict | None = N
     s = z[(z.obs == obs) & z.system.isin(PANEL)]
     if s.empty:
         raise SystemExit(f"no rows at obs={obs}")
-    axes_of = {k: set(g.axis.unique()) for k, g in s.groupby("system")}
-    names = [n for n in PANEL if n in axes_of]
-    own = pd.concat([task_composite(s[s.system == n], sorted(axes_of[n])) for n in names])
+    U = s.pivot_table(index="system", columns="task", values="z", aggfunc="mean")
+    names = [n for n in PANEL if n in U.index]
+    U = U.reindex(names)
     pairs = list(itertools.combinations(names, 2))
     nz = {p: nuisance(*p, radius) for p in pairs}
     adm = [p for p in pairs if not nz[p][1]]
 
     rows = []
     for a, b in pairs:
-        U = task_composite(s[s.system.isin([a, b])], sorted(axes_of[a] & axes_of[b]))
         d = (U.loc[a] - U.loc[b]).dropna()
-        if len(d) < MIN_TASKS:
+        if len(d) < 3:
             continue
         tl = list(d.index)
         gap = float(d.mean())
@@ -84,7 +82,7 @@ def contrast(obs: str = "system_trunc", root: Path = WB, radius: dict | None = N
                          R4=bool(ok and abs(gap) > q_adm),
                          R5=bool(ok and abs(gap) > q_adm + eps_out)))
     df = pd.DataFrame(rows)
-    score = own.mean(axis=1).sort_values(ascending=False)
+    score = U.mean(axis=1).sort_values(ascending=False)
     return df, score, pairs, adm
 
 

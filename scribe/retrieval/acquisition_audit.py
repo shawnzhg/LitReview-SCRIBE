@@ -52,19 +52,19 @@ def main():
         if prov.get("bm25_meta_sha256_16") != "263f4ee078ad2e00":
             f.append("index sha16 not the pin")
         pr = prov.get("cutoff_probe") or {}
-        if (pr.get("before_cutoff") or {}).get("status") != 200:
-            f.append(f"cutoff probe before-cutoff not 200: {pr.get('before_cutoff')}")
-        af = pr.get("at_cutoff") or {}
+        if (pr.get("at_cutoff") or {}).get("status") != 200:
+            f.append(f"cutoff probe at-cutoff not 200: {pr.get('at_cutoff')}")
+        af = pr.get("after_cutoff") or {}
         if af.get("pmid") is not None and af.get("status") != 404:
-            f.append(f"cutoff probe at-cutoff not 404: {af}")
+            f.append(f"cutoff probe after-cutoff not 404: {af}")
         calls = jl(d / "pool_calls.jsonl")
         sc = [c for c in calls if c.get("kind") == "search"]
         returned = set()
         for c in sc:
             for x in c.get("returned") or []:
                 returned.add(str(x["pmid"]))
-                if x.get("year") is None or int(x["year"]) >= cut:
-                    f.append(f"search returned pmid {x['pmid']} ({x.get('year')}) not dated before the cutoff")
+                if x.get("year") is not None and int(x["year"]) > cut:
+                    f.append(f"search returned post-cutoff pmid {x['pmid']} ({x['year']})")
             if c.get("cutoff") != cut:
                 f.append(f"pool_calls cutoff {c.get('cutoff')} != {cut}")
         kept = set()
@@ -72,8 +72,8 @@ def main():
             kept.update(str(x["pmid"]) for x in c.get("kept") or [])
         pids = [str(p["paper_id"]) for p in b.get("papers") or []]
         for p in b.get("papers") or []:
-            if p.get("year") is None or int(p["year"]) >= cut:
-                f.append(f"bundle paper {p['paper_id']} year {p.get('year')} not before the cutoff")
+            if p.get("year") is not None and int(p["year"]) > cut:
+                f.append(f"bundle paper {p['paper_id']} year {p['year']} > cutoff")
         not_logged = [p for p in pids if p not in kept]
         if not_logged:
             f.append(f"{len(not_logged)} bundle papers were never returned by a logged search: {not_logged[:5]}")

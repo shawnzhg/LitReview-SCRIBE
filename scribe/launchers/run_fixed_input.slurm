@@ -36,7 +36,7 @@ if [ -n "${SCRIBE_TOOLCHAIN:-}" ]; then source "$SCRIBE_TOOLCHAIN" || { echo "FA
 [ -n "${CUDA_HOME:-}" ] || { echo "FATAL: CUDA_HOME is not set (set it or SCRIBE_TOOLCHAIN)"; exit 99; }
 mkdir -p $RUN $SCRIBE_WORK_ROOT/logs || exit 2
 md5sum $RUNNERS/*.py $RUNNERS/egress_guard.sh $SERVING/*.py $DRIVER $LITREVIEW_ROOT/scribe/levers/writing_levers.py $LEVERS \
-  $LITREVIEW_ROOT/biolitbench/schemas/*.json $LITREVIEW_ROOT/biolitbench/tasks/build_canonical_bundles.py \
+  $LITREVIEW_ROOT/biolitbench/schemas/*.json $LITREVIEW_ROOT/biolitbench/tasks/build_canonical_bundles.py $LITREVIEW_ROOT/biolitbench/release/*.py \
   $LITREVIEW_ROOT/third_party/kvskill/kvskill/*.py > $RUN/code.md5 || { echo "FATAL: cannot fingerprint the code"; exit 2; }
 echo "### code recorded at start: $(wc -l < $RUN/code.md5) files ($RUN/code.md5); levers $LEVERS md5 $(md5sum < $LEVERS | cut -c1-32)"
 echo "### start=$(date) node=$(hostname) gpu=${CUDA_VISIBLE_DEVICES:-} theta=$THETA mode=$MODE level=$LEVEL tag=$TAG arm=$ARM seeds=$SEEDS ntasks=$NTASKS"
@@ -45,8 +45,9 @@ PIDS=(); cleanup(){ for p in "${PIDS[@]:-}"; do kill -- -"$p" 2>/dev/null || kil
 wait_http(){ for i in $(seq 1 "$3"); do curl -sf -o /dev/null "$1" 2>/dev/null && { echo "  $2 UP (~$((i*5))s)"; return 0; }; sleep 5; done; echo "FATAL: $2 never came up"; return 1; }
 
 cd $RUN
-$RUN_PY $LITREVIEW_ROOT/biolitbench/tasks/build_canonical_bundles.py --check 2>&1 | tail -3
-[ "${PIPESTATUS[0]}" = 0 ] || { echo "FATAL: canonical bundles missing or drifted (biolitbench/tasks/build_canonical_bundles.py --check)"; exit 90; }
+DATA_ROOT=$(dirname "$RUNS"); DATA_PROFILE=train; [ -d "$RUNS/taskspecs/dev" ] && DATA_PROFILE=test
+$RUN_PY $LITREVIEW_ROOT/biolitbench/release/verify_data.py --root "$DATA_ROOT" --profile $DATA_PROFILE 2>&1 | tail -20
+[ "${PIPESTATUS[0]}" = 0 ] || { echo "FATAL: data root $DATA_ROOT fails biolitbench/release/verify_data.py --profile $DATA_PROFILE ($DATA_ROOT/verify_report.json)"; exit 90; }
 
 THETA_PLANNING=${THETA_PLANNING:-$THETA0}
 GPU_UTIL_REG=${GPU_UTIL_REG:-0.72}

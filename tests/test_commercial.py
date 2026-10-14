@@ -425,7 +425,7 @@ def test_audit_gemini_resolves_cited_pmids_in_the_pool(env, monkeypatch, capsys)
     rows = {r["cond"]: r for r in json.loads((env / "out" / "audit.json").read_text())}
     r = rows["fixinput"]
     assert (r["n_pmid"], r["pmid_in_pool"], r["pmid_title_match"], r["pmid_title_mismatch"]) == (3, 2, 1, 1)
-    assert r["pmid_not_in_pool_before_cutoff"] == 1 and r["in_allowlist"] == 2 and r["target_review_cited"]
+    assert r["pmid_not_in_pool_or_after_cutoff"] == 1 and r["in_allowlist"] == 2 and r["target_review_cited"]
     assert sorted(p.name for p in (env / "out").iterdir()) == ["audit.json", "runs"]
 
 

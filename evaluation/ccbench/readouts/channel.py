@@ -206,6 +206,8 @@ def _compute_null_tau(task: str, g: graphs.GStar, n_reviews: int, q: float) -> f
         try:
             hro = human.adapt(pid)
             sents += [s.text for s in hro.report.sentences if len(s.text) >= 20][:400]
+        except (paths.DehydratedDataError, paths.MissingCompanionError):
+            raise
         except Exception:
             continue
     claims = [c.text for c in g.claims if c.text]
@@ -276,6 +278,7 @@ def induce(ro: Rollout, g: graphs.GStar, units: Units, tau_floor: float | None =
         for lst in units.edges_by_type.values():
             pairs.update(lst)
         pairs.update(units.hard_negatives)
+        pairs.update(units.restatements)
         for m in units.motifs.values():
             for path in m:
                 pairs.update(zip(path[:-1], path[1:]))
@@ -292,25 +295,27 @@ def induce(ro: Rollout, g: graphs.GStar, units: Units, tau_floor: float | None =
         ind.edge_tau = float(np.quantile(own, 0.10)) if own else None
     sys_secs = [(sec["id"], strip_title_number(sec.get("title") or "")) for sec in ro.report.sections if sec.get("title")]
     if sys_secs and units.top_sections:
+        hum_titles = [strip_title_number(t["title"]) for t in units.top_sections]
+        he = embed.encode(hum_titles)
+        sye = embed.encode([t for _, t in sys_secs])
+        S = embed.cosine_matrix(he, sye)
         claims_in_sys_sec: dict[str, set[str]] = {}
         for cid, (sid, _) in ind.claim_match.items():
             claims_in_sys_sec.setdefault(ind.sent_section.get(sid), set()).add(cid)
         used = set()
-        for t in units.top_sections:
-            hum = strip_title_number(t["title"]).lower()
-            best, best_sid = None, None
-            for sid, title in sys_secs:
+        for i, t in enumerate(units.top_sections):
+            best, best_j = None, None
+            for j, (sid, title) in enumerate(sys_secs):
                 if sid in used:
                     continue
-                shared = len(set(t["claims"]) & claims_in_sys_sec.get(sid, set()))
-                fz = fuzz.token_set_ratio(hum, title.lower())
-                if fz >= cfg["section_match_fuzzy"] and shared:
-                    score = (fz, shared)
+                ok = fuzz.token_set_ratio(hum_titles[i].lower(), title.lower()) >= cfg["section_match_fuzzy"] or S[i, j] >= cfg["section_match_cosine"]
+                if ok and (set(t["claims"]) & claims_in_sys_sec.get(sid, set())):
+                    score = float(S[i, j])
                     if best is None or score > best:
-                        best, best_sid = score, sid
-            if best_sid is not None:
-                ind.section_match[t["id"]] = best_sid
-                used.add(best_sid)
+                        best, best_j = score, j
+            if best_j is not None:
+                ind.section_match[t["id"]] = sys_secs[best_j][0]
+                used.add(sys_secs[best_j][0])
     return ind
 
 

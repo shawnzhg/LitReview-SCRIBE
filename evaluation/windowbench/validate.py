@@ -344,9 +344,9 @@ def allocation_is_reproducible(D: Data):
 
 
 def channel_and_registry(D: Data):
-    trunc = set(D.human[D.human.window == "system_trunc"].task)
-    check("peers are scored at the matched-length view on every task", set(D.tasks) <= trunc,
-          f"{len(set(D.tasks) - trunc)} tasks without matched-length peers")
+    banded = set(D.cal_e10.task)
+    check("every task has the frozen full-length peer band that normalises every view", set(D.tasks) <= banded,
+          f"{len(set(D.tasks) - banded)} tasks without a peer band")
     extra = sorted(set(D.scores.window) - set(C.REGISTERED["windows"]))
     check("every score row lies at a registered window", not extra, str(extra))
     reg = C.registry()

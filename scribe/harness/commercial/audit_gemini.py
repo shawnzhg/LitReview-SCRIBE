@@ -89,7 +89,7 @@ for r in rows:
     notpool = [x for x in pm if pool_title(r["task"], x["pmid"]) is None]
     o = dict(cond=r["cond"], task=r["task"], stem=r["stem"], body_words=r["body_words"], n_refs=n, n_pmid=len(pm),
              pmid_in_pool=len(inpool), pmid_title_match=len(correct), pmid_title_mismatch=len(wrong),
-             pmid_not_in_pool_before_cutoff=len(notpool), refs_without_pmid=n - len(pm),
+             pmid_not_in_pool_or_after_cutoff=len(notpool), refs_without_pmid=n - len(pm),
              ref_domains=dict(Counter(x["domain"] for x in r["refs"] if not x["pmid"])),
              in_allowlist=sum(1 for x in pm if x["pmid"] in r["allow"]) if r["cond"] == "fixinput" else None,
              target_review_cited=any((x["pmid"] == r["rp"] or x["pmc"] == r["rpmc"]) and "uploaded file" not in (x["title"] or "").lower() for x in r["refs"]),
@@ -102,7 +102,7 @@ for cond in ("samepool", "fixinput"):
     R = [o for o in out if o["cond"] == cond]
     tot = lambda k: sum(o[k] for o in R)
     print(f"== {cond} (n={len(R)}): body words median {st.median(o['body_words'] for o in R):.0f}; refs median {st.median(o['n_refs'] for o in R)}; zero-ref runs {[o['stem'][:2] for o in R if o['n_refs']==0]}")
-    print(f"  refs {tot('n_refs')}: with PMID {tot('n_pmid')} | in the pool before the cutoff {tot('pmid_in_pool')} (title OK {tot('pmid_title_match')}, title MISMATCH {tot('pmid_title_mismatch')}) | not in the pool before the cutoff {tot('pmid_not_in_pool_before_cutoff')} | no PMID {tot('refs_without_pmid')}")
+    print(f"  refs {tot('n_refs')}: with PMID {tot('n_pmid')} | in frozen pool & <=cutoff {tot('pmid_in_pool')} (title OK {tot('pmid_title_match')}, title MISMATCH {tot('pmid_title_mismatch')}) | PMID not in pool/after cutoff {tot('pmid_not_in_pool_or_after_cutoff')} | no PMID {tot('refs_without_pmid')}")
     if cond == "fixinput": print(f"  cited PMIDs in allowlist: {tot('in_allowlist')} / {tot('n_pmid')}")
     print(f"  target review: cited {[o['stem'][:2] for o in R if o['target_review_cited']]}; in sources {[o['stem'][:2] for o in R if o['target_review_in_sources']]}")
     sd = Counter(); [sd.update(o['src_used']) for o in R]; rd = Counter(); [rd.update(o['src_read_not_used']) for o in R]

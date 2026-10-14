@@ -1,5 +1,5 @@
 """Tests the BioLitBench builders and the pool on synthetic data: the eight relation types, the NLI
-grounding rule, top-level hard negatives, the strict cutoff, the exclusion of the evaluated review,
+grounding rule, top-level hard negatives, the cutoff year, the exclusion of the evaluated review,
 and the fail-closed tap."""
 
 import gzip
@@ -117,12 +117,12 @@ def pool_index(tmp_path, monkeypatch):
     return out
 
 
-def test_search_serves_only_dated_papers_before_the_cutoff(pool_index):
+def test_search_serves_papers_up_to_the_cutoff_year_and_undated_papers(pool_index):
     ix = pool_common.PoolIndex(pool_index)
     hits, total = ix.search("gene regulation", cutoff=2020, k=10)
-    assert sorted(h["pmid"] for h in hits) == ["1", "4"] and total == 2
-    hits, total = ix.search("gene regulation", cutoff=2020, k=10, exclude=("4",))
-    assert [h["pmid"] for h in hits] == ["1"] and total == 1
+    assert sorted(h["pmid"] for h in hits) == ["1", "2", "3", "4"] and total == 4
+    hits, total = ix.search("gene regulation", cutoff=2019, k=10, exclude=("4",))
+    assert sorted(h["pmid"] for h in hits) == ["1", "3"] and total == 2
     hits, _ = ix.search("gene regulation", cutoff=2022, k=10, year_min=2019)
     assert sorted(h["pmid"] for h in hits) == ["1", "2", "5"]
 
@@ -168,9 +168,9 @@ def write_edges(d, fwd, max_pmid=7):
     (d / "meta.json").write_text(json.dumps({"n_edges_input": sum(map(len, fwd.values()))}))
 
 
-def test_pool_service_hides_the_review_and_every_paper_not_before_the_cutoff(pool_index, tmp_path, monkeypatch):
+def test_pool_service_hides_the_review_and_every_paper_after_the_cutoff(pool_index, tmp_path, monkeypatch):
     svc = load_service(monkeypatch)
-    write_edges(tmp_path / "edges", {1: [2, 4, 3, 6]})
+    write_edges(tmp_path / "edges", {1: [2, 4, 3, 5, 6]})
     monkeypatch.setattr(svc, "EDGES_PATH", str(tmp_path / "edges"))
     (tmp_path / "cutoffs.json").write_text(json.dumps({"t1": 2020}))
     gold = tmp_path / "gold"
@@ -178,18 +178,23 @@ def test_pool_service_hides_the_review_and_every_paper_not_before_the_cutoff(poo
     (gold / "t1.json").write_text(json.dumps({"review_pmid": "4"}))
     svc.ST = svc.State(pool_index, tmp_path / "cutoffs.json", gold, tmp_path / "log.jsonl", "http://x")
     hits, total = svc.ST.ranked("t1", "gene regulation", 10)
-    assert [h["pmid"] for h in hits] == ["1"] and total == 1
-    assert svc.visible_doc("t1", "4") is None and svc.visible_doc("t1", "2") is None
-    assert svc.visible_doc("t1", "3") is None and svc.visible_doc("t1", "6")["pmid"] == "6"
-    assert svc.visible_neighbours("t1", svc.ST.edges.refs(1), None).tolist() == [6]
+    assert sorted(h["pmid"] for h in hits) == ["1", "2", "3"] and total == 3
+    assert svc.visible_doc("t1", "4") is None and svc.visible_doc("t1", "5") is None
+    assert svc.visible_doc("t1", "2")["pmid"] == "2" and svc.visible_doc("t1", "6")["pmid"] == "6"
+    assert svc.visible_doc("t1", "3") is None
+    assert svc.visible_neighbours("t1", svc.ST.edges.refs(1), None).tolist() == [2, 6]
 
     allow = tmp_path / "allow"
     allow.mkdir()
-    (allow / "t1.json").write_text(json.dumps(["1", "3", "4", "6"]))
+    (allow / "t1.json").write_text(json.dumps(["1", "3", "4", "5", "6"]))
     monkeypatch.setattr(svc, "ALLOWLIST_DIR", str(allow))
     svc.ST = svc.State(pool_index, tmp_path / "cutoffs.json", gold, tmp_path / "log.jsonl", "http://x")
     hits, _ = svc.ST.ranked("t1", "gene regulation", 10)
-    assert [h["pmid"] for h in hits] == ["1", "6"]
+    assert sorted(h["pmid"] for h in hits) == ["1", "3", "6"] and hits[-1]["pmid"] == "6"
+    hits, _ = svc.ST.ranked("t1", "yeast", 10)
+    assert [h["pmid"] for h in hits] == ["1", "3", "6"]
+    hits, _ = svc.ST.ranked("t1", "yeast", 10, ymin=2016)
+    assert [h["pmid"] for h in hits] == ["1"]
 
     (gold / "t1.json").write_text(json.dumps({"review_pmid": None}))
     with pytest.raises(SystemExit):
@@ -198,8 +203,10 @@ def test_pool_service_hides_the_review_and_every_paper_not_before_the_cutoff(poo
 
 def test_selector_views_exclude_the_review_and_fail_closed(tmp_path, monkeypatch):
     sel = load(TAP / "pool_selector.py", "bb_selector")
-    assert sel._visible("201907.56", 2020, "55") and not sel._visible("201907.55", 2020, "55")
-    assert not sel._visible("202007.56", 2020, "55") and not sel._visible("56", 2020, "55")
+    assert sel._visible("202007.56", 2020, "55", False) and not sel._visible("202007.55", 2020, "55", False)
+    assert not sel._visible("202107.56", 2020, "55", True)
+    assert not sel._visible("000007.56", 2020, "55", False) and sel._visible("000007.56", 2020, "55", True)
+    assert not sel._visible("56", 2020, "55", False) and not sel._visible("000007.55", 2020, "55", True)
     view = tmp_path / "2020.t1.npy"
     np.save(view, np.asarray([1, 2], dtype="int64"))
     (tmp_path / "task_to_cutoff.json").write_text(json.dumps({"tasks": {"t1": {"cutoff": 2020, "review_pmid": "55"}}}))
@@ -281,11 +288,11 @@ def test_docstore_refuses_a_paper_db_without_its_sqlite_store(tmp_path):
     assert r.returncode != 0 and "docstore_meta.json" in r.stderr
 
 
-def test_canonical_bundle_excludes_the_review_and_papers_not_before_the_cutoff(tmp_path, monkeypatch):
+def test_canonical_bundle_excludes_the_review_and_papers_after_the_cutoff(tmp_path, monkeypatch):
     B = load(BB / "tasks" / "build_canonical_bundles.py", "bb_canonical")
     for d in ("allow", "specs", "gold", "refs", "sents"):
         (tmp_path / d).mkdir()
-    (tmp_path / "allow" / "t1.json").write_text(json.dumps(["10", "11", "12", "13", "14"]))
+    (tmp_path / "allow" / "t1.json").write_text(json.dumps(["10", "11", "12", "13", "14", "15"]))
     (tmp_path / "specs" / "t1.json").write_text(json.dumps({"publication_cutoff": 2020,
                                                             "content_hash": "sha256:" + "0" * 64}))
     (tmp_path / "gold" / "t1.json").write_text(json.dumps({"review_pmid": "11"}))
@@ -296,16 +303,22 @@ def test_canonical_bundle_excludes_the_review_and_papers_not_before_the_cutoff(t
     db = sqlite3.connect(":memory:")
     db.execute("create table meta (pmid integer, title text, year integer, abstract text)")
     db.executemany("insert into meta values (?,?,?,?)", [(10, "T10", 2018, "A10"), (11, "T11", 2019, "A11"),
-                                                         (12, "T12", 2020, "A12"), (14, "T14", 2019, "A14")])
+                                                         (12, "T12", 2020, "A12"), (14, "T14", 2019, "A14"),
+                                                         (15, "T15", 2021, "A15")])
     ctx = B.SplitCtx("dev", allowlist_dir=tmp_path / "allow", taskspecs_dir=tmp_path / "specs",
                      gold_dir=tmp_path / "gold", refs_dir=tmp_path / "refs", sentences_dir=tmp_path / "sents",
                      out=tmp_path / "out")
     bundle, texts, row = B.build_task("t1", db, ctx)
-    assert [(p["paper_id"], p["year"]) for p in bundle["papers"]] == [("10", 2018), ("14", 2019)]
+    assert [(p["paper_id"], p["year"]) for p in bundle["papers"]] == [("10", 2018), ("12", 2020), ("13", None),
+                                                                      ("14", 2019)]
     v = bundle["validation"]
-    assert v["review_pmid_excluded"] == "11" and v["post_cutoff_excluded_pmids"] == ["12", "13"]
+    assert v["review_pmid_excluded"] == "11" and v["post_cutoff_excluded_pmids"] == ["15"]
+    assert v["year_sources"] == {"ref_years": 1, "split_ref_years": 0, "sqlite": 2, "none": 1}
     assert v["n_allowlisted_file"] - v["n_review_pmid_excluded"] - v["n_post_cutoff_excluded"] == len(bundle["papers"])
     ry.write_text(json.dumps({"10": 2020}))
+    B.ref_years.cache_clear()
+    assert B.build_task("t1", db, ctx)[0]["papers"][0]["year"] == 2020
+    ry.write_text(json.dumps({"10": 2021}))
     B.ref_years.cache_clear()
     with pytest.raises(ValueError):
         B.build_task("t1", db, ctx)
@@ -383,4 +396,4 @@ def test_embedding_layout_feeds_assemble_db_and_the_cutoff_views(tmp_path):
     gold.mkdir()
     (gold / "t1.json").write_text(json.dumps({"review_pmid": "33"}))
     V.build(str(tmp_path / "cut.json"), str(gold), str(out), str(tmp_path / "views"))
-    assert np.load(tmp_path / "views" / "2021.t1.npy").tolist() == [1]
+    assert np.load(tmp_path / "views" / "2021.t1.npy").tolist() == [1, 2]

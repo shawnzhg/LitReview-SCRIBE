@@ -133,13 +133,14 @@ def test_refs_record_and_task_list(tmp_path):
     bundle = {"papers": [{"paper_id": "11", "title": "A", "doi": "10.1/a"},
                          {"paper_id": "22", "title": None}]}
     bundle["papers"] += [{"paper_id": "33", "title": "same year"}, {"paper_id": "44", "title": "undated"},
-                         {"paper_id": "55", "title": "the review"}]
-    years = {"11": 2010, "22": 2018, "33": 2019, "55": 2001}
+                         {"paper_id": "55", "title": "the review"}, {"paper_id": "66", "title": "later"}]
+    years = {"11": 2010, "22": 2018, "33": 2019, "55": 2001, "66": 2020}
     d = m.refs_record("pmcid_PMC1", spec, bundle, {"11": "abs one"}, years, "55")
     assert d["topic"] == "Topic X" and d["cutoff_year"] == 2019 and d["target_words"] == 4000
-    assert d["n_refs"] == 2 and d["task_id"] == "pmcid_PMC1" and d["source"] == "gold"
+    assert d["n_refs"] == 4 and d["task_id"] == "pmcid_PMC1" and d["source"] == "gold"
     assert d["refs"][0] == {"pmid": "11", "doi": "10.1/a", "title": "A", "year": 2010, "abstract": "abs one"}
     assert d["refs"][1]["abstract"] == "" and d["refs"][1]["title"] == "" and d["refs"][1]["year"] == 2018
+    assert [(r["pmid"], r["year"]) for r in d["refs"][2:]] == [("33", 2019), ("44", None)]
     gold = tmp_path / "gold"
     gold.mkdir()
     (gold / "pmcid_PMC1.json").write_text(json.dumps({"review_pmid": 55}))
@@ -153,6 +154,10 @@ def test_refs_record_and_task_list(tmp_path):
     jl = tmp_path / "i.jsonl"
     jl.write_text('{"task_id": "x"}\n\n{"task_id": "y"}\n')
     assert m.task_list(jl) == ["x", "y"]
+    allow = {("x", "pmid1_0", "abstract_sentence", "h0"): "w0", ("x", "pmid1_1", "abstract_sentence", "h1"): None,
+             ("z", "pmid2_0", "abstract_sentence", "h2"): "w2"}
+    assert m.drift_record(allow, "sha", ["x", "y"]) == {"rehydrate_report_sha256": "sha", "n_text_drift": {"x": 2}}
+    assert m.drift_record({}, None, ["x"]) == {"rehydrate_report_sha256": None, "n_text_drift": {}}
 
 
 def test_lira_adapter(tmp_path):
@@ -162,39 +167,45 @@ def test_lira_adapter(tmp_path):
                                     {"pmid": "8", "title": "T8", "abstract": " ", "year": 2000},
                                     {"pmid": "x9", "title": "T9", "abstract": "a9", "year": 2000},
                                     {"pmid": "10", "title": "T10", "abstract": "a10", "year": 2019},
-                                    {"pmid": "11", "title": "T11", "abstract": "a11", "year": None}]),
+                                    {"pmid": "11", "title": "T11", "abstract": "a11", "year": None},
+                                    {"pmid": "12", "title": "T12", "abstract": "a12", "year": 2020}]),
                     ("pmcid_PMC3", [{"pmid": "4", "title": "T4", "abstract": "", "year": 2000}])):
         (tmp_path / "in" / t).mkdir(parents=True)
         (tmp_path / "in" / t / "refs.json").write_text(
             json.dumps({"topic": "topic " + t, "task_id": t, "cutoff_year": 2019, "refs": refs}))
     surveys, dropped = m.lira_surveys(tmp_path / "in")
-    assert dropped == 5
+    assert dropped == 4
     assert [s["task_id"] for s in surveys] == ["pmcid_PMC1", "pmcid_PMC2"]
     assert [s["id"] for s in surveys] == [0, 1]
-    assert surveys[0]["references"] == [{"num": 1, "id": 7, "title": "", "content": "a7"}]
+    assert surveys[0]["references"] == [{"num": 1, "id": 7, "title": "", "content": "a7"},
+                                        {"num": 4, "id": 10, "title": "T10", "content": "a10"},
+                                        {"num": 5, "id": 11, "title": "T11", "content": "a11"}]
     assert surveys[1]["references"][0]["id"] == 5
+    (tmp_path / "in" / "text_drift.json").write_text(json.dumps({"rehydrate_report_sha256": "s", "n_text_drift": {"pmcid_PMC1": 1}}))
     m.main(["--inputs", str(tmp_path / "in"), "--out", str(tmp_path / "lira")])
     got = json.loads((tmp_path / "lira" / "scireviewgen" / "full_data_abs.json").read_text())
     assert got == surveys
+    assert (tmp_path / "lira" / "scireviewgen" / "text_drift.json").read_bytes() == (tmp_path / "in" / "text_drift.json").read_bytes()
 
 
 def test_index_space_allowlists_are_autosurvey_only(tmp_path):
     m = load("make_allowlists_idx.py", "baseline_idx")
     allow = tmp_path / "allow"
     allow.mkdir()
-    (allow / "t1.json").write_text(json.dumps(["100", "200", "999"]))
+    (allow / "t1.json").write_text(json.dumps(["100", "200", "300", "999"]))
     pool = tmp_path / "pool"
     (pool / "autosurvey_db").mkdir(parents=True)
     (pool / "autosurvey_db" / "arxivid_to_index_abs.json").write_text(json.dumps({"100": 3, "200": 1, "999": 5}))
     views = tmp_path / "views"
     views.mkdir()
     np.save(views / "2019.t1.npy", np.array([1, 3, 4], dtype="int64"))
+    (views / "task_to_cutoff.json").write_text(json.dumps({"tasks": {"t1": {"cutoff": 2019, "review_pmid": "200"}}}))
     args = ["--allowlists", str(allow), "--pool-index", str(pool), "--cutoff-views", str(views)]
     m.main(["--arm", "autosurvey"] + args)
-    assert np.load(allow / "t1.autosurvey.idx.npy").tolist() == [1, 3]
+    assert np.load(allow / "t1.autosurvey.idx.npy").tolist() == [3, 5]
     with pytest.raises(SystemExit):
         m.main(["--arm", "surveyforge"] + args)
-    (views / "2019.t1.npy").unlink()
+    (views / "task_to_cutoff.json").unlink()
     with pytest.raises(SystemExit):
         m.main(["--arm", "autosurvey"] + args)
 
@@ -211,8 +222,8 @@ def test_cutoff_views(tmp_path):
     tc = tmp_path / "tc.json"
     tc.write_text(json.dumps({"t1": 2019, "t2": 2005}))
     m.build(str(tc), str(gold), str(db), str(tmp_path / "cut"))
-    assert np.load(tmp_path / "cut" / "2019.t1.npy").tolist() == [1, 6]
-    assert np.load(tmp_path / "cut" / "2005.t2.npy").tolist() == [1]
+    assert np.load(tmp_path / "cut" / "2019.t1.npy").tolist() == [1, 4, 6]
+    assert np.load(tmp_path / "cut" / "2005.t2.npy").tolist() == [1, 2]
     meta = json.loads((tmp_path / "cut" / "task_to_cutoff.json").read_text())
     assert meta["tasks"] == {"t1": {"cutoff": 2019, "review_pmid": "22"}, "t2": {"cutoff": 2005, "review_pmid": "66"}}
 
@@ -368,7 +379,7 @@ SF_LINES = ["[pool_docstore] patched 1 name(s) in src.database",
             "[pool_selector] cutoff selector applied to src.database.database",
             "[pool_selector] cutoff selector applied to src.database.database_survey",
             "[pool_selector] cutoff post-filter applied to src.rag.GeneralRAG_langchain.retrieve",
-            "[pool_selector] survey-db selector: 17133/20000 ids before 2023"]
+            "[pool_selector] survey-db selector: 17133/20000 ids <= 2023"]
 
 
 def test_selector_and_docstore_must_engage(tmp_path):

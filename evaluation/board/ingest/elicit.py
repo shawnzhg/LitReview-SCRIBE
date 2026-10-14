@@ -149,7 +149,8 @@ def pmid_of_row(pid: str, r: dict, pre: dict, aset: set, by_doi: dict, by_title:
 
 
 def gold_index(task: str, allow: list[str]) -> tuple[dict, dict]:
-    gold = {str(r.get("pmid")): r for r in json.load(open(_gold_refs(task)))["refs"] if r.get("pmid")}
+    from ccbench import paths
+    gold = {str(r.get("pmid")): r for r in paths.read_json(_gold_refs(task))["refs"] if r.get("pmid")}
     by_doi = {norm_doi(gold[p].get("doi")): p for p in allow if p in gold and gold[p].get("doi")}
     by_title = {norm_title(gold[p].get("title")): p for p in allow if p in gold and gold[p].get("title")}
     return by_doi, by_title

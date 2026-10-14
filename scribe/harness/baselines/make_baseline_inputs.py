@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Writes the refs.json of every evaluation task (topic, cutoff, target length and the reference
-papers with a known year before the cutoff, without the evaluated review) for the published-pipeline
-drivers. Usage: python make_baseline_inputs.py --tasks <json> --taskspecs <dir> --gold <dir> --out <dir>."""
+papers published in or before the cutoff year or undated, without the evaluated review) for the
+published-pipeline drivers, and <out>/text_drift.json with the abstract units per task that differ
+from the release under SCRIBE_REHYDRATE_REPORT. Usage: python make_baseline_inputs.py --tasks <json>
+--taskspecs <dir> --gold <dir> --out <dir>."""
 
 from __future__ import annotations
 import argparse
@@ -32,9 +34,9 @@ def review_pmid(gold_dir, task_id):
 def refs_record(task_id, spec, bundle, abstracts, years, review):
     cutoff = int(spec["publication_cutoff"])
     refs = [{"pmid": str(pp["paper_id"]), "doi": pp.get("doi"), "title": pp.get("title") or "",
-             "year": years[str(pp["paper_id"])], "abstract": abstracts.get(pp["paper_id"]) or ""}
+             "year": years.get(str(pp["paper_id"])), "abstract": abstracts.get(pp["paper_id"]) or ""}
             for pp in bundle["papers"]
-            if str(pp["paper_id"]) != review and years.get(str(pp["paper_id"]), cutoff) < cutoff]
+            if str(pp["paper_id"]) != review and years.get(str(pp["paper_id"]), cutoff) <= cutoff]
     return {"topic": spec["question"], "n_refs": len(refs), "source": "gold",
             "task_id": task_id, "cutoff_year": cutoff,
             "target_words": spec["output_spec"]["target_words"], "refs": refs}
@@ -46,6 +48,11 @@ def build(R, task_id, specs_dir, years, gold_dir):
     if not b:
         return None
     return refs_record(task_id, spec, b, abstracts_for(R, task_id), years, review_pmid(gold_dir, task_id))
+
+
+def drift_record(allow, report_sha, tasks):
+    n = {t: sum(1 for k in allow if k[0] == t) for t in tasks}
+    return {"rehydrate_report_sha256": report_sha, "n_text_drift": {t: v for t, v in n.items() if v}}
 
 
 def task_list(path):
@@ -72,7 +79,8 @@ def main(argv=None):
     years = load_years(R.REF_YEARS)
     out, specs = Path(a.out), Path(a.taskspecs)
     tasks = task_list(a.tasks)
-    n, skipped = 0, []
+    allow, report_sha = R.text_drift_allowance(("oracle_sentences",))
+    written, skipped = [], []
     for t in tasks:
         d = build(R, t, specs, years, a.gold)
         if d is None:
@@ -81,8 +89,13 @@ def main(argv=None):
         od = out / t
         od.mkdir(parents=True, exist_ok=True)
         (od / "refs.json").write_text(json.dumps(d))
-        n += 1
-    print(json.dumps({"written": n, "n_tasks": len(tasks), "skipped": skipped, "out": str(out)}, indent=1))
+        written.append(t)
+    drift = drift_record(allow, report_sha, written)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "text_drift.json").write_text(json.dumps(drift, indent=1))
+    print(json.dumps({"written": len(written), "n_tasks": len(tasks), "skipped": skipped, "out": str(out),
+                      "n_text_drift_units": sum(drift["n_text_drift"].values()),
+                      "n_text_drift_tasks": len(drift["n_text_drift"])}, indent=1))
 
 
 if __name__ == "__main__":

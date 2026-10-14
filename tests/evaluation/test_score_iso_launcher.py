@@ -1,4 +1,4 @@
-"""Tests the argument handling of evaluation/board/score_iso.sh with a stub sbatch."""
+"""Tests the argument handling of evaluation/board/score_iso.sh with a stub sbatch, and the ingest refusal without the shared tables."""
 
 import os
 import subprocess
@@ -15,9 +15,9 @@ SH = ROOT / "evaluation" / "board" / "score_iso.sh"
 @pytest.fixture
 def site(tmp_path):
     port, data = tmp_path / "port", tmp_path / "data"
-    (port / "out" / "E1").mkdir(parents=True)
-    (port / "out" / "E1" / "conformance.csv").write_text("system,task\n")
-    (port / "out" / "rollouts" / "claude_science_mcp").mkdir(parents=True)
+    (port / "scores" / "E1").mkdir(parents=True)
+    (port / "scores" / "E1" / "conformance.csv").write_text("system,task\n")
+    (port / "scores" / "rollouts" / "claude_science_mcp").mkdir(parents=True)
     runs_root = data / "tree" / "runs"
     (runs_root / "level5" / "SCRIBE" / "native_chain").mkdir(parents=True)
     (runs_root / "level6" / "SCRIBE" / "native_chain").mkdir(parents=True)
@@ -33,7 +33,7 @@ def site(tmp_path):
     (runs / "samepool").mkdir()
     (tmp_path / "bundle").mkdir()
     env = {"PATH": f"{stub.parent}:{os.environ['PATH']}", "HOME": str(tmp_path), "CCBENCH_ENV": str(env_sh),
-           "SCRIBE_RUNS_ROOT": str(runs_root),
+           "SCRIBE_RUNS_ROOT": str(runs_root), "CCBENCH_SHARED_OUT": str(port / "scores"),
            "ISO_ROOT": str(tmp_path / "iso"), "COMMERCIAL_OUT": str(tmp_path / "bundle"),
            "SBATCH_ARGS": str(tmp_path / "sbatch_args"), "PYTHONDONTWRITEBYTECODE": "1"}
     return types.SimpleNamespace(tmp=tmp_path, port=port, data=data, runs=runs, runs_root=runs_root, env=env)
@@ -62,6 +62,7 @@ def test_bad_modes_and_argument_counts_are_refused(site):
 def test_the_site_environment_and_the_output_root_are_required(site):
     assert refused(run(site, "agent", "openai_tool_loop", site.runs, CCBENCH_ENV=None), "CCBENCH_ENV")
     assert refused(run(site, "agent", "openai_tool_loop", site.runs, ISO_ROOT=None), "ISO_ROOT")
+    assert refused(run(site, "agent", "openai_tool_loop", site.runs, CCBENCH_SHARED_OUT=None), "CCBENCH_SHARED_OUT")
     inside = site.port / "out" / "iso"
     assert refused(run(site, "agent", "openai_tool_loop", site.runs, ISO_ROOT=str(inside)), "lies inside")
     assert not inside.exists()
@@ -139,3 +140,14 @@ def test_the_view_builder_reads_the_launchers_output_root(tmp_path):
     g = vb.find_iso("newkey", 5, str(n))
     assert g["dir"] == str(n) and g["level_gate"]["record"]["level"] == 5
     assert vb.find_ext("claude_science_mcp")["dir"] is None and vb.find_iso("newkey", 5)["dir"] is None
+
+
+def test_ingest_build_refuses_without_the_shared_tables(tmp_path, monkeypatch, capsys):
+    import importlib.util
+    monkeypatch.delenv("CCBENCH_SHARED_OUT", raising=False)
+    spec = importlib.util.spec_from_file_location("board_ingest_shared_unset", ROOT / "evaluation" / "board" / "ingest" / "shared.py")
+    sh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sh)
+    assert sh.build(tmp_path / "runs", {}, None, []) == 2
+    assert "CCBENCH_SHARED_OUT" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()

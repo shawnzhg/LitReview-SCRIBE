@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import windows as W
 from calllog import CallLog
-from common import ROOT, RUNS, env_path, sha256_str, utcnow, validate, host_class
+from common import ROOT, RUNS, env_path, read_json, sha256_str, utcnow, validate, host_class
 from integrity import check_chain
 
 ORACLE = RUNS / "oracle" / "dev"
@@ -117,12 +117,12 @@ def load_spec(task_id, split=None):
 
 def load_oracle(task_id, kind):
     p = ORACLE / kind / f"{task_id}.json"
-    return json.loads(p.read_text()) if p.exists() else None
+    return read_json(p) if p.exists() else None
 
 
 def load_canonical(task_id, kind, root=None, split=None):
     p = (root or canonical_root(task_id, split)) / kind / f"{task_id}.json"
-    return json.loads(p.read_text()) if p.exists() else None
+    return read_json(p) if p.exists() else None
 
 
 def allowlist_path(task_id) -> Path:
@@ -264,6 +264,46 @@ def texts_from_canonical(task_id, root=None, split=None):
     return load_canonical(task_id, "texts", root, split) or {}
 
 
+REHYDRATE_REPORT_SCHEMA = "biolit-rehydrate-report/1"
+DRIFT_TEXT_KINDS = ("texts_test", "texts_train")
+_DRIFT_CACHE = {}
+
+
+class RehydrateReportError(RuntimeError):
+    pass
+
+
+def text_drift_allowance(kinds=DRIFT_TEXT_KINDS):
+    path = os.environ.get("SCRIBE_REHYDRATE_REPORT")
+    if not path or not os.path.isfile(path):
+        return {}, None
+    st = os.stat(path)
+    key = (os.path.realpath(path), st.st_mtime_ns, st.st_size, os.path.realpath(str(RUNS)), tuple(kinds))
+    if key in _DRIFT_CACHE:
+        return _DRIFT_CACHE[key]
+    raw = Path(path).read_bytes()
+    try:
+        rep = json.loads(raw)
+    except ValueError as e:
+        raise RehydrateReportError(f"SCRIBE_REHYDRATE_REPORT={path} is not valid JSON: {e}")
+    if not isinstance(rep, dict) or rep.get("schema") != REHYDRATE_REPORT_SCHEMA:
+        raise RehydrateReportError(f"SCRIBE_REHYDRATE_REPORT={path}: schema is not {REHYDRATE_REPORT_SCHEMA}")
+    root = str(rep.get("root") or "")
+    if not root or os.path.realpath(root) != os.path.realpath(os.path.join(str(RUNS), "..")):
+        raise RehydrateReportError(f"SCRIBE_REHYDRATE_REPORT={path}: report root {root!r} is not the parent of "
+                                   f"SCRIBE_RUNS_ROOT {RUNS}")
+    tsv = Path(root) / "manifests" / "original_sha256.tsv"
+    if not tsv.is_file() or hashlib.sha256(tsv.read_bytes()).hexdigest() != rep.get("manifest_sha256"):
+        raise RehydrateReportError(f"SCRIBE_REHYDRATE_REPORT={path}: manifest_sha256 does not match {tsv}")
+    allow = {}
+    for d in rep.get("drift") or []:
+        if d.get("kind") in kinds:
+            allow[(str(d.get("task_id")), d.get("locator"), d.get("granularity"),
+                   d.get("expected_text_hash"))] = d.get("written_text_hash")
+    _DRIFT_CACHE[key] = (allow, hashlib.sha256(raw).hexdigest())
+    return _DRIFT_CACHE[key]
+
+
 def check_bundle_delivery(task_id, spec, bundle, texts, canonical=None, allowlist=None,
                           split=None):
     errors = []
@@ -305,7 +345,8 @@ def check_bundle_delivery(task_id, spec, bundle, texts, canonical=None, allowlis
     if not_delivered:
         errors.append(f"{len(not_delivered)} allowlisted pmids not delivered: {not_delivered[:5]}")
 
-    n_checked, bad_hash = 0, []
+    drift_allow, report_sha = text_drift_allowance()
+    n_checked, bad_hash, drift_locs = 0, [], []
     for e in (bundle or {}).get("evidence") or []:
         pid = str(e.get("paper_id"))
         t = texts.get(pid) or {}
@@ -317,16 +358,20 @@ def check_bundle_delivery(task_id, spec, bundle, texts, canonical=None, allowlis
             txt = None
         n_checked += 1
         if txt is None or sha256_str(txt) != e.get("text_hash"):
-            bad_hash.append(e.get("evidence_id"))
+            dkey = (str(task_id), e.get("locator"), e.get("granularity"), e.get("text_hash"))
+            if dkey in drift_allow and drift_allow[dkey] == (None if txt is None else sha256_str(txt)):
+                drift_locs.append(e.get("locator"))
+            else:
+                bad_hash.append(e.get("evidence_id"))
     if bad_hash:
         errors.append(f"{len(bad_hash)} evidence entries whose text_hash != sha256(delivered "
                       f"text): {bad_hash[:5]}")
 
     cutoff = spec.get("publication_cutoff") if spec else None
     late = [p["paper_id"] for p in papers
-            if cutoff is not None and p.get("year") is not None and int(p["year"]) >= int(cutoff)]
+            if cutoff is not None and p.get("year") is not None and int(p["year"]) > int(cutoff)]
     if late:
-        errors.append(f"{len(late)} papers with year >= cutoff {cutoff}: {late[:5]}")
+        errors.append(f"{len(late)} papers with year > cutoff {cutoff}: {late[:5]}")
     n_year_unknown = sum(1 for p in papers if p.get("year") is None)
 
     bh = (bundle or {}).get("content_hash")
@@ -363,6 +408,9 @@ def check_bundle_delivery(task_id, spec, bundle, texts, canonical=None, allowlis
         "n_without_abstract": len(pid_set - with_abs),
         "n_evidence_checked": n_checked,
         "n_text_hash_mismatch": len(bad_hash),
+        "n_text_drift": len(drift_locs),
+        "text_drift_locators": sorted(drift_locs),
+        "rehydrate_report_sha256": report_sha,
         "texts_sha256": texts_sha256(texts),
         "delivery_rate": (round(len(pid_set & allow_set) / len(allow_set), 6) if allow_set else 0.0),
         "bundle_subset_of_allowlist": not not_allowed,
@@ -390,6 +438,8 @@ def delivery_fields(summary):
             "n_with_abstract": summary.get("n_with_abstract"),
             "n_without_abstract": summary.get("n_without_abstract"),
             "texts_sha256": summary.get("texts_sha256"),
+            "n_text_drift": summary.get("n_text_drift", 0),
+            "rehydrate_report_sha256": summary.get("rehydrate_report_sha256"),
             "delivery_rate": summary.get("delivery_rate"),
             "bundle_subset_of_allowlist": summary.get("bundle_subset_of_allowlist"),
             "cutoff_ok": summary.get("cutoff_ok"),
@@ -411,7 +461,7 @@ def texts_from_oracle(task_id):
     p = ORACLE / "sentences" / f"{task_id}.json"
     if not p.exists():
         return {}
-    raw = json.loads(p.read_text())
+    raw = read_json(p)
     out = {}
     for loc, txt in raw.items():
         pid = loc.split("_")[0][4:]

@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE))
 from view_agents import AGENTS, EXT_KEYS
 
 EVAL = HERE.parent
-SHARED_OUT = Path(os.environ.get("CCBENCH_ROOT") or "/nonexistent/CCBENCH_ROOT") / "out"
+SHARED_OUT = Path(os.environ.get("CCBENCH_SHARED_OUT") or "/nonexistent/CCBENCH_SHARED_OUT")
 RUN_VIEW = HERE / "run_view.py"
 CODE_FILES = ("view_builder.py", "view_agents.py", "run_view.py")
 PY = os.environ.get("PY") or sys.executable

@@ -4,6 +4,7 @@ CCBENCH_OUT environment variables."""
 from __future__ import annotations
 
 import functools
+import json
 import os
 import re
 from pathlib import Path
@@ -18,6 +19,33 @@ BASELINE_ARMS = ("autosurvey", "surveyforge", "surveyg", "sgi", "lira", "llmxmr"
 FIXED_INPUT_ARMS = ("autosurvey", "surveyg", "sgi", "llmxmr")
 PANEL_A = BASELINE_ARMS
 SEED_RE = re.compile(r"^(?P<mode>.+?)\.seed(?P<seed>\d+)$")
+
+
+DEHYDRATED_FORMAT_PREFIX = "biolit-dehydrated/"
+
+
+class DehydratedDataError(RuntimeError):
+    def __init__(self, path):
+        self.path = str(path)
+        super().__init__(f"{path} is a dehydrated release file; run biolitbench/release/rehydrate.py on this data root first")
+
+
+class MissingCompanionError(FileNotFoundError):
+    def __init__(self, task, missing):
+        self.task = task
+        self.missing = [str(m) for m in missing]
+        super().__init__(f"task {task} has a graph but these files are missing: " + ", ".join(self.missing))
+
+
+def check_not_dehydrated(obj, path):
+    if isinstance(obj, dict) and str(obj.get("format", "")).startswith(DEHYDRATED_FORMAT_PREFIX):
+        raise DehydratedDataError(path)
+    return obj
+
+
+def read_json(path):
+    with open(path) as f:
+        return check_not_dehydrated(json.load(f), path)
 
 
 def agent_keys() -> list[str]:

@@ -325,18 +325,29 @@ def test_allocation_scores_use_the_ccbench_normaliser():
     assert Z.loc["t0", "collapse"] == pytest.approx(0.5)
 
 
-def test_entry_conditioned_synthesis_is_normalised_with_the_peer_band():
+def test_entry_conditioned_synthesis_is_normalised_with_the_full_length_peer_band_at_every_view(tmp_path):
     from windowbench import conditioned_synthesis as CS
     H = pd.DataFrame([{"system": f"human:{s}", "task": "t0", "readout": "synP_all_cov", "value": v, "source_review": s}
                       for s, v in (("t0", 0.8), ("p1", 0.2), ("p2", 0.2), ("p3", 0.2))])
     df = pd.DataFrame([{"system": "x", "task": "t0", "readout": "synP_all_cov", "value": 0.6, "window": "system"}])
     Z = CS.calibrate(df, H)
     assert Z.z.iloc[0] == pytest.approx((0.6 - 0.2) / (0.8 - 0.2))
+    df.to_parquet(tmp_path / "conditioned_trunc.parquet", index=False)
+    H.to_parquet(tmp_path / "conditioned_human.parquet", index=False)
+    d, h = CS.load(tmp_path, "system_trunc")
+    assert len(d) == 1 and h.equals(H)
 
 
 def test_backbone_labels_lead_with_the_backbone_of_the_paper_tables():
     assert R.SYSTEMS[OURS]["backbone"].split(" ")[0] == "Qwen3.8-27B"
     assert R.SYSTEMS["autosurvey.ref"]["backbone"].split(" ")[0] == "gpt-5.6-luna"
+
+
+def test_every_view_is_normalised_with_the_frozen_full_length_peer_band():
+    from windowbench import load as L
+    cal = pd.DataFrame({"task": ["t0"], "readout": ["completion"]})
+    d = types.SimpleNamespace(cal_e10=cal)
+    assert all(L.Data.calibration(d, w) is cal for w in C.REGISTERED["windows"])
 
 
 def test_a_full_validation_run_makes_twenty_nine_assertions(tmp_path, monkeypatch):
@@ -348,6 +359,7 @@ def test_a_full_validation_run_makes_twenty_nine_assertions(tmp_path, monkeypatc
         scores = pd.DataFrame(columns=["system", "task", "window", "readout", "value", "source"])
         human = pd.DataFrame(columns=["system", "task", "window", "readout", "value", "source_review"])
         outline_axis_human = pd.DataFrame()
+        cal_e10 = pd.DataFrame({"task": list(TASKS), "readout": "completion"})
 
         def readouts_at(self, obs):
             return []

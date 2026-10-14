@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the fixed-input evidence bundle of every task from its reference list, keeping only papers
-published before the cutoff and never the evaluated review, or checks the built bundles. Usage:
-python build_canonical_bundles.py [--split dev|train] [--tasks <ids>] [--check]."""
+"""Builds the fixed-input evidence bundle of every task from its reference list, keeping the papers
+published in or before the cutoff year or undated and never the evaluated review, or checks the built
+bundles. Usage: python build_canonical_bundles.py [--split dev|train] [--tasks <ids>] [--check]."""
 
 from __future__ import annotations
 import argparse
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scribe" / "harness" / "runners"))
-from common import RUNS, seal, sha256_str, validate, content_hash
+from common import RUNS, read_json, seal, sha256_str, validate, content_hash
 import runner as R
 
 
@@ -164,7 +164,7 @@ def _sentences_by_pmid(task_id, sentences_dir=_UNSET):
     p = Path(sentences_dir) / f"{task_id}.json"
     if not p.exists():
         return out
-    for loc, txt in json.loads(p.read_text()).items():
+    for loc, txt in read_json(p).items():
         pid = loc.split("_")[0][4:]
         out.setdefault(pid, []).append((int(loc.rsplit("_", 1)[1]), loc, txt))
     for pid in out:
@@ -178,7 +178,7 @@ def _texts_source(task_id, texts_dir):
     p = Path(texts_dir) / f"{task_id}.json"
     if not p.exists():
         return {}
-    return {str(k): v for k, v in json.loads(p.read_text()).items()}
+    return {str(k): v for k, v in read_json(p).items()}
 
 
 def _nonblank(s):
@@ -211,7 +211,7 @@ def build_task(task_id, db=None, ctx=None):
                                 f"{ctx.split} split's texts first")
 
     year_of, late, post_excluded = {}, [], []
-    year_sources = {"ref_years": 0, "split_ref_years": 0, "sqlite": 0}
+    year_sources = {"ref_years": 0, "split_ref_years": 0, "sqlite": 0, "none": 0}
     for pid in pmids:
         if ry.get(pid) is not None:
             y, src = int(ry[pid]), "ref_years"
@@ -220,15 +220,15 @@ def build_task(task_id, db=None, ctx=None):
         else:
             sy = (sq.get(pid) or {}).get("year")
             y, src = (int(sy) if sy is not None else None), "sqlite"
-        if y is not None and y >= cutoff and src != "sqlite":
+        if y is not None and y > cutoff and src != "sqlite":
             late.append(pid)
-        elif y is None or y >= cutoff:
+        elif y is not None and y > cutoff:
             post_excluded.append(pid)
         else:
             year_of[pid] = y
-            year_sources[src] += 1
+            year_sources[src if y is not None else "none"] += 1
     if late:
-        raise ValueError(f"{task_id}: {len(late)} allowlisted papers dated in or after the cutoff year "
+        raise ValueError(f"{task_id}: {len(late)} allowlisted papers dated after the cutoff "
                          f"{cutoff}: {late[:5]} -- the allowlist is not cutoff-clean")
     pmids = [p for p in pmids if p in year_of]
 
@@ -365,7 +365,7 @@ def build(tasks, out: Path, db=None, ctx=None):
     _write_index(out, index)
     print(f"[canonical] split={ctx.split} {len(tasks)} tasks, {n_changed} files changed, "
           f"{len(errors)} schema failures, {n_excluded} review_pmid excluded, "
-          f"{n_post} not dated before the cutoff excluded -> {out}")
+          f"{n_post} dated after the cutoff excluded -> {out}")
     return errors
 
 

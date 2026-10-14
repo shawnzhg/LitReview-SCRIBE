@@ -18,6 +18,7 @@ case "$AGENT" in
   *) echo "FATAL: unknown agent $AGENT ($AGENTS native)"; exit 2;;
 esac
 [ -f "$ISO/out/E13/window_scores.parquet" ] || { echo "FATAL: $ISO has no out/E13/window_scores.parquet"; exit 2; }
+[ -d "${CCBENCH_SHARED_OUT:-}" ] || { echo "FATAL: set CCBENCH_SHARED_OUT to the shared score tables (prepare_root.py writes it to <root>/site.env)"; exit 2; }
 if [ -z "${SLURM_JOB_ID:-}" ] && [ "${LOCAL:-0}" != 1 ]; then
   LOGS=${SCRIBE_WORK_ROOT:?set SCRIBE_WORK_ROOT (configs/site.env.example)}/logs
   mkdir -p "$LOGS" || exit 2
@@ -26,7 +27,7 @@ if [ -z "${SLURM_JOB_ID:-}" ] && [ "${LOCAL:-0}" != 1 ]; then
     --output=$LOGS/board_view_%j.log "$0" "$@"
 fi
 source "${CCBENCH_ENV:?set CCBENCH_ENV to the site environment script}"
-export PYTHONPATH=$LITREVIEW_ROOT/evaluation:$PYTHONPATH
+export PYTHONPATH=$LITREVIEW_ROOT/evaluation:${PYTHONPATH:-}
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 PYTHONHASHSEED=0 PYTHONWARNINGS=ignore PYTHONDONTWRITEBYTECODE=1
 unset WINDOWBENCH_OUTLINE_AXIS_ROWS WINDOWBENCH_ROSTER_INJECT CCBENCH_DEVICE
 VB=$LITREVIEW_ROOT/evaluation/board/view_builder.py

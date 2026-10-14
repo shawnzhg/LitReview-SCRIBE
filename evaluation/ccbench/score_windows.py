@@ -1,4 +1,4 @@
-"""Scores the readouts at each window view, including the length-matched report of systems and peers,
+"""Scores the readouts at each window view, including the length-matched report of systems,
 and writes the window score table. Usage: python -m ccbench.score_windows [--peers] [--truncate]
 [--systems ...]."""
 
@@ -46,7 +46,7 @@ def main(argv=None):
     ap.add_argument("--tasks", default=None)
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--systems", default=None, help="only these agent keys; their rows replace theirs in the existing table")
-    ap.add_argument("--truncate", action="store_true", help="also score the length-matched view (window system_trunc) of every system and peer")
+    ap.add_argument("--truncate", action="store_true", help="also score the length-matched view (window system_trunc) of every system")
     a = ap.parse_args(argv)
     windows = a.windows.split(",")
     if a.truncate and "system_trunc" not in windows:

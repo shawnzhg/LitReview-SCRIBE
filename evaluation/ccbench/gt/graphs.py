@@ -77,7 +77,7 @@ class GStar:
 
     def reachable_pmids(self, cutoff: int | None = None) -> set[str]:
         c = cutoff if cutoff is not None else self.cutoff
-        return {p for p in self.pmids if c is None or gt_years.before_cutoff(p, c)}
+        return {p for p in self.pmids if c is None or gt_years.is_post_cutoff(p, c) is not True}
 
     def claims_by_tier(self, tier: str) -> list[Claim]:
         return [c for c in self.claims if c.tier == tier]
@@ -96,16 +96,25 @@ class GStar:
         return cur.id if cur else section_id
 
 
+def _grounding_rel(task: str) -> str:
+    return f"data/reference_corpus/train_2000/grounding/{task}.json"
+
+
+def _structure_rel(task: str) -> str:
+    return f"biolit-bench/results_2000/benchmark_claims/{task}/review_structure_llm.json"
+
+
 def _grounding_path(task: str):
-    return paths.resolve_opt(f"data/reference_corpus/train_2000/grounding/{task}.json")
+    return paths.resolve_opt(_grounding_rel(task))
 
 
 def _load_sections(task: str) -> list[Section]:
-    p = paths.resolve_opt(f"biolit-bench/results_2000/benchmark_claims/{task}/review_structure_llm.json")
+    p = paths.resolve_opt(_structure_rel(task))
     if p is None:
+        if has_graph(task):
+            raise paths.MissingCompanionError(task, [_structure_rel(task)])
         return []
-    with open(p) as f:
-        rs = json.load(f)
+    rs = paths.read_json(p)
     out = []
     for s in rs.get("sections", []):
         out.append(
@@ -123,28 +132,27 @@ def _load_sections(task: str) -> list[Section]:
 @functools.lru_cache(maxsize=4096)
 def load(task: str, cutoff: int | None = None) -> GStar:
     cfg = prereg()["tiers"]
-    with open(paths.gt_graph_path(task)) as f:
-        g = json.load(f)
-    refs: dict[int, dict] = {}
+    g = paths.read_json(paths.gt_graph_path(task))
     rp = paths.gt_refs_path(task)
-    if rp.exists():
-        with open(rp) as f:
-            for k, v in json.load(f).items():
-                try:
-                    refs[int(k)] = v
-                except ValueError:
-                    continue
+    gp = _grounding_path(task)
+    missing = [rel for rel, ok in ((str(rp), rp.exists()), (_grounding_rel(task), gp is not None),
+                                   (_structure_rel(task), paths.resolve_opt(_structure_rel(task)) is not None)) if not ok]
+    if missing:
+        raise paths.MissingCompanionError(task, missing)
+    refs: dict[int, dict] = {}
+    for k, v in paths.read_json(rp).items():
+        try:
+            refs[int(k)] = v
+        except ValueError:
+            continue
     rw = {int(k): int(v) for k, v in (g.get("reference_weights") or {}).items() if str(k).lstrip("-").isdigit()}
     wvals = np.array(list(rw.values()) or [1])
     w_req = float(np.quantile(wvals, cfg["w_req_quantile"]))
 
     contra: dict[str, float] = {}
-    gp = _grounding_path(task)
-    if gp is not None:
-        with open(gp) as f:
-            for cid, v in json.load(f).items():
-                if isinstance(v, dict) and v.get("contradict") is not None:
-                    contra[cid] = float(v["contradict"])
+    for cid, v in paths.read_json(gp).items():
+        if isinstance(v, dict) and v.get("contradict") is not None:
+            contra[cid] = float(v["contradict"])
 
     claims: list[Claim] = []
     for c in g.get("claims", []):
@@ -182,7 +190,7 @@ def load(task: str, cutoff: int | None = None) -> GStar:
         return Edge(
             src=e["source_id"],
             tgt=e["target_id"],
-            type=e.get("relation_type") or e.get("rel") or "",
+            type=e.get("relation_type") or e.get("rel") or "other_relation",
             confidence=e.get("rel_confidence"),
             direction=e.get("direction"),
             cosine=e.get("cosine"),
@@ -221,3 +229,10 @@ def load(task: str, cutoff: int | None = None) -> GStar:
 
 def exists(task: str) -> bool:
     return paths.gt_graph_path(task).exists()
+
+
+def has_graph(task: str) -> bool:
+    try:
+        return exists(task)
+    except FileNotFoundError:
+        return False

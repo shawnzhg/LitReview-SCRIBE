@@ -26,6 +26,8 @@ units:
   hub_weight_quantile: 0.75
   recent_years_before_cutoff: 3
   community_min_size: 3
+  grounded_hi: 0.90
+  grounded_lo: 0.50
   multi_source_min_refs: 2
   reused_paper_min_claims: 3
   motif_chain_min_len: 3

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -34,6 +33,7 @@ class Units:
     edges_by_type: dict[str, list[tuple[str, str]]]
     edges_by_distance: dict[str, list[tuple[str, str]]]
     hard_negatives: list[tuple[str, str]]
+    restatements: list[tuple[str, str]]
     motifs: dict[str, list[tuple[str, ...]]]
     top_sections: list[dict]
     section_of_claim: dict[str, str | None]
@@ -44,8 +44,10 @@ class Units:
 def _paragraphs(task: str) -> tuple[dict[str, dict], dict[str, str]]:
     p = paths.resolve_opt(f"biolit-bench/results_2000/benchmark_claims/{task}/review_structure_llm.json")
     if p is None:
+        if graphs.has_graph(task):
+            raise paths.MissingCompanionError(task, [f"biolit-bench/results_2000/benchmark_claims/{task}/review_structure_llm.json"])
         return {}, {}
-    rs = json.load(open(p))
+    rs = paths.read_json(p)
     paras = {x["paragraph_id"]: x for x in rs.get("paragraphs", [])}
     central: dict[str, str] = {}
     for pid, x in paras.items():
@@ -92,8 +94,8 @@ def build(task: str) -> Units:
     by_tier: dict[str, list[str]] = defaultdict(list)
     for c in g.claims:
         by_tier[c.tier].append(c.id)
-    ghi = [c.id for c in g.claims if c.groundedness is not None and c.groundedness >= 0.5]
-    glo = [c.id for c in g.claims if c.groundedness is not None and c.groundedness < 0.5]
+    ghi = [c.id for c in g.claims if c.groundedness is not None and c.groundedness >= cfg["grounded_hi"]]
+    glo = [c.id for c in g.claims if c.groundedness is not None and c.groundedness < cfg["grounded_lo"]]
     paras, central_text = _paragraphs(task)
     central = []
     for c in g.claims:
@@ -140,6 +142,8 @@ def build(task: str) -> Units:
             d = "distant"
         by_dist[d].append((e.src, e.tgt))
     hard = [(e.src, e.tgt) for e in g.hard_negatives]
+    raw = paths.read_json(paths.gt_graph_path(task))
+    restate = [(e["source_id"], e["target_id"]) for e in raw.get("restatement_edges", []) if e.get("source_id") and e.get("target_id")]
     D = nx.DiGraph()
     for e in g.edges:
         if e.type in ("elaboration", "mechanism", "evidence"):
@@ -161,7 +165,7 @@ def build(task: str) -> Units:
                 motifs["contrast_condition"].append(tuple(sorted(c1 | c2)))
     for k in motifs:
         motifs[k] = sorted(set(motifs[k]))[:200]
-    return Units(task=task, hubs=hubs, tail=tail, recent=recent, classic=classic, communities=communities, subfields=dict(subfields), claims_by_tier=dict(by_tier), grounded_hi=ghi, grounded_lo=glo, central=central, multi_source=multi, reused_papers=reused, edges_by_type=dict(by_type), edges_by_distance=dict(by_dist), hard_negatives=hard, motifs=motifs, top_sections=top_secs, section_of_claim=sec_of_claim, paragraph_of_claim={c.id: c.paragraph_id for c in g.claims}, meta={"n_papers": len(pm), "n_claims": len(g.claims), "n_edges": len(g.edges), "n_top_sections": len(top_secs), "n_communities": len(communities), "n_central": len(central)})
+    return Units(task=task, hubs=hubs, tail=tail, recent=recent, classic=classic, communities=communities, subfields=dict(subfields), claims_by_tier=dict(by_tier), grounded_hi=ghi, grounded_lo=glo, central=central, multi_source=multi, reused_papers=reused, edges_by_type=dict(by_type), edges_by_distance=dict(by_dist), hard_negatives=hard, restatements=restate, motifs=motifs, top_sections=top_secs, section_of_claim=sec_of_claim, paragraph_of_claim={c.id: c.paragraph_id for c in g.claims}, meta={"n_papers": len(pm), "n_claims": len(g.claims), "n_edges": len(g.edges), "n_top_sections": len(top_secs), "n_communities": len(communities), "n_central": len(central)})
 
 
 def _paths_from(D: nx.DiGraph, start: str, length: int, max_paths: int = 50) -> list[list[str]]:

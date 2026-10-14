@@ -1,5 +1,5 @@
 """Tests the scorer and certification package on synthetic data: modules load from the repo, the
-rule ladder, the composite, rank intervals, truncation, the peer channel, heading matching, the
+rule ladder, the composite, rank intervals, truncation, the peer rollout, heading matching, the
 radius, the controllability operator and seed keys."""
 
 import inspect
@@ -147,92 +147,108 @@ def _rollout(words_per_sentence, n_per_section, target, panel="A"):
                    report=Report(sections=secs, sentences=sents, bibliography=[], words=words))
 
 
-def test_truncation_stops_at_the_target_word_count_inside_a_section():
-    from ccbench.adapters.common import word_count
+def test_truncation_keeps_whole_sections_up_to_the_first_boundary_past_the_target():
     from ccbench.readouts import window_views as WV
-    for panel in ("A", "H"):
-        ro = _rollout(10, [3, 3, 3], 45, panel)
-        tv = WV.truncated_view(ro)
-        assert tv.report.words == 45 == sum(word_count(s.text) for s in tv.report.sentences)
-        assert [s.sid for s in tv.report.sentences] == ["s0#0", "s0#1", "s0#2", "s1#0", "s1#1"]
-        assert word_count(tv.report.sentences[-1].text) == 5
-        assert [sec["id"] for sec in tv.report.sections] == ["s0", "s1"]
-        assert word_count(tv.report.sections[-1]["text"]) == 15
+    ro = _rollout(10, [3, 3, 3], 45)
+    tv = WV.truncated_view(ro)
+    assert [sec["id"] for sec in tv.report.sections] == ["s0", "s1"]
+    assert [s.sid for s in tv.report.sentences] == [f"s{k}#{j}" for k in (0, 1) for j in range(3)]
+    assert tv.report.words == 60 and tv.report.bibliography == [f"{k}{j}" for k in (0, 1) for j in range(3)]
     short = _rollout(10, [2], 45)
     assert WV.truncated_view(short) is short
 
 
-def test_peers_pass_through_the_system_sentence_channel(tmp_path, monkeypatch):
+def test_peers_are_not_rescored_in_the_length_matched_view(monkeypatch):
+    from ccbench.gt import graphs
+    from ccbench.readouts import window_views as WV
+    monkeypatch.setattr(graphs, "exists", lambda t: True)
+    monkeypatch.setattr(graphs, "load", lambda t: None)
+    ro = _rollout(10, [3, 3, 3], 45, "H")
+    ro.meta["source_review"] = "peer"
+    assert WV.human_view(ro, "system_trunc") == (None, set())
+
+
+def test_peers_carry_their_claims_verbatim_with_the_claim_references(tmp_path, monkeypatch):
     from ccbench import paths
     from ccbench.adapters import common, human
     from ccbench.gt import graphs
     from ccbench.ingest import gold
     from ccbench.model import Context
-    text1 = "Genes encode products ([17]). They act in pathways (). Models ([5]; [61]) link them."
+    text1 = "Genes encode products [17]. They act in pathways [2]. Models link them."
     rs = {"sections": [{"section_id": "sec_1", "title": "Intro", "heading_level": 1, "section_type": "body"}],
-          "paragraphs": [{"paragraph_id": "p1", "section_id": "sec_1", "text": text1}]}
+          "paragraphs": [{"paragraph_id": "p1", "section_id": "sec_1", "text": text1, "claim_ids": ["c1"]}]}
     (tmp_path / "rs.json").write_text(json.dumps(rs))
-    claim = graphs.Claim(id="c1", text="They act in pathways ().", section_id="sec_1", section_type="body", paragraph_id="p1",
-                         ref_nos=[2], pmids=["222"], groundedness=0.9, contradict=None, weight=1, tier="required")
-    g = graphs.GStar(task="t", topic="x", claims=[claim], edges=[], hard_negatives=[], sections=[], refs={17: {"pmid": "171"}, 5: {"pmid": "55"}, 61: {"pmid": "611"}, 2: {"pmid": "222"}},
+    c1 = graphs.Claim(id="c1", text="They act  in pathways [2].", section_id="sec_1", section_type="body", paragraph_id="p1",
+                      ref_nos=[2], pmids=["222"], groundedness=0.9, contradict=None, weight=1, tier="required")
+    c2 = graphs.Claim(id="c2", text="A claim outside every paragraph.", section_id="sec_2", section_type="body", paragraph_id=None,
+                      ref_nos=[5, 6], pmids=["55"], groundedness=0.9, contradict=None, weight=1, tier="required")
+    g = graphs.GStar(task="t", topic="x", claims=[c1, c2], edges=[], hard_negatives=[], sections=[], refs={2: {"pmid": "222"}, 5: {"pmid": "55"}},
                      reference_weights={}, cutoff=2020, w_req=1.0)
     monkeypatch.setattr(graphs, "exists", lambda t: True)
     monkeypatch.setattr(graphs, "load", lambda t: g)
     monkeypatch.setattr(gold, "context_for", lambda t: Context(task=t, topic="x", cutoff=2020, target_words=100))
     monkeypatch.setattr(paths, "resolve_opt", lambda rel: tmp_path / "rs.json")
     ro = human.adapt("peer", target_task="t")
-    assert [s.text for s in ro.report.sentences] == [human.CITE.sub("", s).strip() for s in common.split_sentences(text1)]
-    assert [s.cites for s in ro.report.sentences] == [["171"], ["222"], ["55", "611"]]
-    assert ro.report.words == common.word_count(human.CITE.sub(" ", text1)) and ro.report.total_citation_marks == 3
+    assert [(s.text, s.cites) for s in ro.report.sentences] == [("They act in pathways [2].", ["222"]), ("Genes encode products [17].", []),
+                                                                ("Models link them.", []), ("A claim outside every paragraph.", ["55"])]
+    assert ro.report.words == common.word_count(text1) and ro.report.total_citation_marks == 3
+    assert ro.task == "t" and ro.report.bibliography == ["222", "55"]
 
 
-def test_headings_match_by_fuzzy_title_and_shared_claims(monkeypatch):
+def test_headings_match_by_title_fuzzy_or_cosine_and_shared_claims(monkeypatch):
     from ccbench.gt.units import Units
     from ccbench.model import Context, Report, Rollout, Sentence
     from ccbench.readouts import channel, embed
     rng = np.random.default_rng(0)
     vec = {}
+    same = {"Protein folding dynamics": "Folding of proteins over time"}
     def enc(texts, prefix="", batch_size=32):
         out = []
         for t in texts:
+            t = same.get(t, t)
             if t not in vec:
-                v = rng.normal(size=8)
+                v = rng.normal(size=64)
                 vec[t] = v / np.linalg.norm(v)
             out.append(vec[t])
-        return np.array(out).reshape(len(texts), 8)
+        return np.array(out).reshape(len(texts), 64)
     monkeypatch.setattr(embed, "encode", enc)
     monkeypatch.setattr(channel, "null_tau", lambda task, g: 0.99)
     from ccbench.gt import graphs
-    claims = [graphs.Claim(id=f"c{i}", text=f"claim number {i} about the topic here", section_id="h1" if i < 2 else "h2", section_type="body",
-                           paragraph_id=None, ref_nos=[], pmids=[], groundedness=None, contradict=None, weight=0, tier="admissible") for i in range(4)]
+    claims = [graphs.Claim(id=f"c{i}", text=f"claim number {i} about the topic here", section_id=f"h{i // 2 + 1}", section_type="body",
+                           paragraph_id=None, ref_nos=[], pmids=[], groundedness=None, contradict=None, weight=0, tier="admissible") for i in range(6)]
     g = graphs.GStar(task="t", topic="", claims=claims, edges=[], hard_negatives=[], sections=[], refs={}, reference_weights={}, cutoff=2020, w_req=1.0)
     u = Units(task="t", hubs=set(), tail=set(), recent=set(), classic=set(), communities=[], subfields={}, claims_by_tier={}, grounded_hi=[], grounded_lo=[],
-              central=[], multi_source={}, reused_papers={}, edges_by_type={}, edges_by_distance={}, hard_negatives=[], motifs={},
-              top_sections=[{"id": "h1", "title": "Gene regulation networks", "claims": ["c0", "c1"]}, {"id": "h2", "title": "Protein folding dynamics", "claims": ["c2", "c3"]}],
+              central=[], multi_source={}, reused_papers={}, edges_by_type={}, edges_by_distance={}, hard_negatives=[], restatements=[], motifs={},
+              top_sections=[{"id": "h1", "title": "Gene regulation networks", "claims": ["c0", "c1"]}, {"id": "h2", "title": "Protein folding dynamics", "claims": ["c2", "c3"]},
+                            {"id": "h3", "title": "Clinical outcomes", "claims": ["c4", "c5"]}],
               section_of_claim={}, paragraph_of_claim={})
     secs = [{"id": "a", "title": "1. Gene regulation networks", "level": 1, "text": claims[0].text},
-            {"id": "b", "title": "Protein folding dynamics", "level": 1, "text": claims[0].text},
-            {"id": "c", "title": "Unrelated heading", "level": 1, "text": claims[2].text}]
-    sents = [Sentence(sid="a#0", section="a", text=claims[0].text), Sentence(sid="c#0", section="c", text=claims[2].text)]
-    ro = Rollout(system="x", task="t", panel="A", context=Context(task="t", topic="", cutoff=2020), report=Report(sections=secs, sentences=sents, words=20))
+            {"id": "b", "title": "Gene regulation networks", "level": 1, "text": claims[2].text},
+            {"id": "c", "title": "Folding of proteins over time", "level": 1, "text": claims[2].text},
+            {"id": "d", "title": "Unrelated heading", "level": 1, "text": claims[4].text}]
+    sents = [Sentence(sid="a#0", section="a", text=claims[0].text), Sentence(sid="c#0", section="c", text=claims[2].text),
+             Sentence(sid="d#0", section="d", text=claims[4].text)]
+    ro = Rollout(system="x", task="t", panel="A", context=Context(task="t", topic="", cutoff=2020), report=Report(sections=secs, sentences=sents, words=30))
     ind = channel.induce(ro, g, u)
-    assert ind.section_match == {"h1": "a"}
+    assert ind.section_match == {"h1": "a", "h2": "c"}
 
 
-def test_task_composite_needs_every_axis_and_rules_need_ten_tasks(tmp_path):
+def test_task_composite_averages_the_axes_a_task_has_and_rules_need_three_tasks(tmp_path):
     from ccbench import contrast_certified as CC
     from ccbench import merge_windowbench as M
-    z = pd.DataFrame([{"obs": "system", "axis": ax, "system": "a", "task": t, "z": 1.0} for t in ("t0", "t1") for ax in ("x", "y")
-                      if not (t == "t1" and ax == "y")])
-    U = M.task_composite(z, ["x", "y"])
-    assert U.loc["a", "t0"] == 1.0 and np.isnan(U.loc["a", "t1"])
+    z = pd.DataFrame([{"obs": "system", "axis": "x", "system": "a", "task": "t0", "z": 1.0},
+                      {"obs": "system", "axis": "y", "system": "a", "task": "t0", "z": 0.0},
+                      {"obs": "system", "axis": "x", "system": "a", "task": "t1", "z": 0.4}])
+    U, axes = M.composite(z, "system", ["a"])
+    assert axes == ["x", "y"] and U.loc["a", "t0"] == 0.5 and U.loc["a", "t1"] == pytest.approx(0.4)
     gaps = {s: 0.05 * i for i, s in enumerate(GPT)} | {"lira": 0.3, "drtulu": -0.3}
     root = _synthetic_root(tmp_path, gaps)
-    zz = pd.read_csv(root / "inputs" / "per_task_axis_z.csv")
-    keep = zz.task.isin([f"t{i:02d}" for i in range(9)]) | (zz.system != "llmxmr")
-    zz[keep].to_csv(root / "inputs" / "per_task_axis_z.csv", index=False)
-    df, _, pairs, _ = CC.contrast("system_trunc", root, None)
-    assert not any("llmxmr" in (r.a, r.b) for r in df.itertuples()) and len(df) == 15
+    full = pd.read_csv(root / "inputs" / "per_task_axis_z.csv")
+    for n, want in ((2, 15), (3, 21)):
+        keep = full.task.isin([f"t{i:02d}" for i in range(n)]) | (full.system != "llmxmr")
+        full[keep].to_csv(root / "inputs" / "per_task_axis_z.csv", index=False)
+        df, _, pairs, _ = CC.contrast("system_trunc", root, None)
+        assert len(df) == want and any("llmxmr" in (r.a, r.b) for r in df.itertuples()) == (n >= 3)
 
 
 def test_radius_charges_the_slack_only_for_a_shifted_entry():
@@ -283,3 +299,13 @@ def test_seed_keys_read_the_seed_directory(monkeypatch):
     monkeypatch.setenv("CCBENCH_PANEL_B_EXTRA", "SCRIBE.bundle_entry,SCRIBE.bundle_entry.seed1,SCRIBE")
     assert build.agent_runs() == [("SCRIBE", "bundle_entry"), ("SCRIBE", "bundle_entry.seed1"), ("SCRIBE", "native_chain")]
     assert build.system_key("SCRIBE", "bundle_entry.seed1") == "SCRIBE.bundle_entry.seed1"
+
+
+def test_reachable_papers_are_dated_in_or_before_the_cutoff_year_or_undated(monkeypatch):
+    from ccbench.gt import graphs, years
+    monkeypatch.setattr(years, "ref_years", lambda: {"1": 2019, "2": 2020, "3": 2021})
+    refs = {n: {"pmid": str(n)} for n in (1, 2, 3, 4)}
+    g = graphs.GStar(task="t", topic="", claims=[], edges=[], hard_negatives=[], sections=[], refs=refs,
+                     reference_weights={}, cutoff=2020, w_req=1.0)
+    assert [years.is_post_cutoff(p, 2020) for p in ("1", "2", "3", "4")] == [False, False, True, None]
+    assert g.reachable_pmids() == {"1", "2", "4"} and g.reachable_pmids(2019) == {"1", "4"}

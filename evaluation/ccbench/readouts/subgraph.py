@@ -105,7 +105,7 @@ def synthesis(ind: Induced, g: graphs.GStar, u: Units) -> list[UnitScore]:
 def reasoning(ind: Induced, g: graphs.GStar, u: Units) -> list[UnitScore]:
     out: list[UnitScore] = []
     for typ, edges in sorted(u.edges_by_type.items()):
-        if typ in ("", "synthesis"):
+        if typ in ("other_relation", "synthesis"):
             continue
         rep = sum(1 for a, b in edges if ind.linked(a, b))
         out.append(_sc(f"rel_{typ}_cov", "reasoning", "edges", typ, "coverage", Q, rep, len(edges)))
