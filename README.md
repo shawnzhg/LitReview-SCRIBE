@@ -3,6 +3,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2609.32318-b31b1b.svg)](https://arxiv.org/abs/2609.32318)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Try it](https://img.shields.io/badge/Try%20it-glkb.org-2ea44f.svg)](https://glkb.org)
+[![Dataset](https://img.shields.io/badge/Hugging%20Face-BioLitBench-ffcc4d.svg)](https://huggingface.co/datasets/shawnzhg/BioLitBench)
 
 Code for **[What Can a Leaderboard Certify? Compositional Controllability for Fair Evaluation and Training of Biomedical Literature-Review Agents](https://arxiv.org/abs/2609.32318)**.
 
@@ -47,7 +48,7 @@ $SCRIBE_TRAIN_PY scribe/training/backbone.py prepare $HF_HOME/hub/models--Qwen--
 Build one data root per profile, `test` (the evaluation tasks and their peers) or `train` (the training split), each with its own `<work>` and `<root>`:
 
 ```bash
-huggingface-cli download <org>/BioLitBench --repo-type dataset --revision v1.0 --local-dir <hf>
+huggingface-cli download shawnzhg/BioLitBench --repo-type dataset --revision v1.0 --local-dir <hf>
 huggingface-cli download nomic-ai/nomic-embed-text-v1 --revision 3ac47f125a41961d13b397d0332866be2f9152e1 --local-dir <models>/data/models/nomic-embed-text-v1
 $PY biolitbench/release/fetch_articles.py --snapshot <hf> --profile <profile> --work <work> --email <email>
 $PY biolitbench/release/parse_jats.py --xml <work>/xml --out <work>/articles
