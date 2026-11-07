@@ -5,6 +5,9 @@
 
 Code for **What Can a Leaderboard Certify? Compositional Controllability for Fair Evaluation and Training of Biomedical Literature-Review Agents** (anonymous submission).
 
+- Code: https://anonymous.4open.science/r/LitReview-SCRIBE-8E4E
+- Dataset: https://huggingface.co/datasets/anonymousubmissionusr/biolitbench
+
 A comparison window covers one stage, several stages, or the whole agent. The gap between
 observed and controlled score differences is bounded using only nuisance outside the window,
 which gives an admissibility test applied before scores are inspected: inadmissible comparisons
