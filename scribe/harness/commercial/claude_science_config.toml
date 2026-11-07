@@ -1,0 +1,7 @@
+# Claude Science app configuration for the benchmark runs: no sandbox network and no automatic
+# updates.
+[sandbox.network]
+enabled = false
+
+[update]
+auto_update = false

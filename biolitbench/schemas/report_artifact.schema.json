@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "report_artifact/1.0",
+  "title": "ReportArtifact",
+  "type": "object",
+  "required": ["schema_version","task_id","outline_plan_hash","sections","sentence_claim_map",
+               "citation_evidence_map","bibliography","terminal_audit","resource_summary","content_hash"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "report_artifact/1.0"},
+    "task_id": {"type": "string"},
+    "outline_plan_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "sections": {"type": "array", "items": {"type": "object",
+      "required": ["section_id","text"],
+      "properties": {"section_id": {"type": "string"}, "text": {"type": "string"}}}},
+    "sentence_claim_map": {"type": "array", "items": {"type": "object",
+      "properties": {"sentence_id": {"type": "string"}, "claim_ids": {"type": "array", "items": {"type": "string"}}}}},
+    "citation_evidence_map": {"type": "array", "items": {"type": "object",
+      "properties": {"sentence_id": {"type": "string"}, "paper_id": {"type": "string"},
+                     "evidence_ids": {"type": "array", "items": {"type": "string"}}}}},
+    "bibliography": {"type": "array", "items": {"type": "string"}},
+    "uncertainty_statements": {"type": "array", "items": {"type": "string"}},
+    "terminal_audit": {"type": "object"},
+    "failures": {"type": "array", "items": {"type": "string"}},
+    "resource_summary": {"type": "object"},
+    "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

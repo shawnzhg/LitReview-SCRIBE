@@ -1,0 +1,14 @@
+--- a/chat_template.jinja
++++ b/chat_template.jinja
+@@ -162,9 +162,5 @@
+ {%- endfor %}
+ {%- if add_generation_prompt %}
+     {{- '<|im_start|>assistant\n' }}
+-    {%- if enable_thinking is defined and enable_thinking is false %}
+-        {{- '<think>\n\n</think>\n\n' }}
+-    {%- else %}
+-        {{- '<think>\n' }}
+-    {%- endif %}
++    {{- '<think>\n\n</think>\n\n' }}
+ {%- endif %}
+\ No newline at end of file

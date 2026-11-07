@@ -1,0 +1,13 @@
+diff --git a/agent/dr_agent/mcp_backend/apis/semantic_scholar_apis.py b/agent/dr_agent/mcp_backend/apis/semantic_scholar_apis.py
+index e280130..f239f86 100644
+--- a/agent/dr_agent/mcp_backend/apis/semantic_scholar_apis.py
++++ b/agent/dr_agent/mcp_backend/apis/semantic_scholar_apis.py
+@@ -21,7 +21,7 @@ S2_API_KEY = os.getenv("S2_API_KEY")
+ TIMEOUT = int(os.getenv("API_TIMEOUT", 10))
+ S2_SEARCH_LIMIT = 100
+ 
+-S2_GRAPH_API_URL = "https://api.semanticscholar.org/graph/v1"
++S2_GRAPH_API_URL = __import__("os").environ.get("S2_GRAPH_API_URL", "https://api.semanticscholar.org/graph/v1")
+ S2_RECOMMENDATIONS_API_URL = "https://api.semanticscholar.org/recommendations/v1"
+ 
+ # authors.authorId,authors.paperCount,authors.citationCount

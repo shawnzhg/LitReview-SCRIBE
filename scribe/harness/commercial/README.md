@@ -1,0 +1,16 @@
+# Commercial agents
+
+Run from this directory, one agent at a time, each with its own output bundle `COMMERCIAL_OUT`. Set `COMMERCIAL_TASKS` (JSON list of task ids) and the directories of `<task>.json` files `COMMERCIAL_TASKSPECS`, `COMMERCIAL_GOLD` and `COMMERCIAL_ALLOWLISTS`. `<cond>` is `fixinput` or `samepool`. `NN` is a task's 1-based position in `COMMERCIAL_TASKS`. Every run is made once; a failed run is not repeated.
+
+1. Start one `$SCRIBE_POOL_PY $LITREVIEW_ROOT/biolitbench/pool/pool_service.py --index <bm25 dir> --cutoffs <cutoffs json> --gold $COMMERCIAL_GOLD --log $COMMERCIAL_OUT/pool_<cond>.jsonl` per condition, the `fixinput` one with `POOL_ALLOWLIST_DIR=$COMMERCIAL_ALLOWLISTS`.
+2. Start one MCP server per condition, logging into the current agent's bundle: `MCP_TASKS=$COMMERCIAL_TASKS MCP_GOLD_DIR=$COMMERCIAL_GOLD MCP_POOL_URL=<fixinput pool URL> MCP_ALLOWLIST_DIR=$COMMERCIAL_ALLOWLISTS MCP_TOKEN=<secret> MCP_PORT=31971 MCP_LOG=$COMMERCIAL_OUT/mcp_call_logs/mcp_fixinput.jsonl python mcp_pool_multi.py` (`samepool`: the samepool pool URL, no `MCP_ALLOWLIST_DIR`, port 31972, `mcp_samepool.jsonl`). Put each token in a file named by `MCP_TOKEN_FILE_FIXINPUT` / `MCP_TOKEN_FILE_SAMEPOOL`.
+3. OpenAI tool loop: `OPENAI_API_KEY=<key> MCP_URL_FIXINPUT=<HTTPS base URL> MCP_URL_SAMEPOOL=<HTTPS base URL> python run_openai_tool_loop.py` (the servers' public base URLs).
+4. Claude Code (`claude` CLI; servers on 127.0.0.1:31971 and 127.0.0.1:31972): `python run_claude_code_batch.py`, then `python audit_claude_code.py`.
+5. Claude Science (`claude-science` on `PATH`, `playwright` with Chromium):
+   - `claude-science serve --no-browser --no-auto-update --port 38765 --data-dir $CS_DATA --config claude_science_config.toml`
+   - `CS_SESSIONS=<file> CS_POOL_URL_FIXINPUT=<fixinput pool URL> CS_POOL_URL_SAMEPOOL=<samepool pool URL> MCP_ALLOWLIST_DIR=$COMMERCIAL_ALLOWLISTS MCP_GOLD_DIR=$COMMERCIAL_GOLD MCP_TOKEN=<secret> MCP_PORT=31973 MCP_LOG=$COMMERCIAL_OUT/mcp_call_logs/mcp_cs.jsonl python mcp_pool_session.py` (`CS_SESSIONS` maps each session code to `{"task", "cond"}`).
+   - In the app: add the remote connector `pool` at `<HTTPS base URL>/<MCP_TOKEN>/mcp`, block every other connector, grant no folders, turn memory off, and set Sonnet 5 at low effort.
+   - Write `$CS_PROMPTS/<cond>/NN_<task>.txt`: `agent_prompt.prompt(<TaskSpec>)`, a blank line, then ``Tool access: use only the `pool` connector's search and fetch tools. Every call to them must pass session = "<code>".``
+   - `CS_DATA=<dir> CS_PROMPTS=<dir> python cs_worker.py 1`, then `python audit_claude_science.py`.
+6. Elicit (fixed input): `ELICIT_API_KEY=<key> python run_elicit_sr.py <task>` per task; within seven days, `python elicit_fetch_postreport.py`, then `python audit_elicit.py`.
+7. Gemini Deep Research (web UI, by hand): one new chat per task and condition, Deep Research on, the task's prompt pasted verbatim, the plan accepted unedited; under `fixinput` attach the task's bundle file and turn Google Search off if the UI allows. Save `$COMMERCIAL_OUT/runs/<cond>/NN_<task>.md` and `NN_<task>.sources.json` (`{pmcid, sources_used: [{url, domain, title}], sources_read_not_used: [...]}`). Then `COMMERCIAL_POOL_URL=<samepool pool URL> python audit_gemini.py`.

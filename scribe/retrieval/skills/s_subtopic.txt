@@ -1,0 +1,17 @@
+SKILL: cover a review topic subtopic by subtopic (evidence acquisition)
+- A review is built from several distinct bodies of literature. Searching the topic as a whole finds the
+  most-cited core and misses the rest.
+- Before searching, split the question and its scope into 6-10 subtopics that together cover what a full
+  review would discuss, for example: biology or mechanism; epidemiology and risk factors; diagnosis and
+  biomarkers; each major treatment or intervention class; outcomes and prognosis; special populations;
+  methods and models; open controversies. Each subtopic should match a section a human review would write,
+  and subtopics should overlap as little as possible.
+- Give each subtopic a short name and one clause saying which papers belong to it.
+- Search each subtopic with varied query types:
+    broad        2 queries naming the subtopic in general terms
+    core-method  2 queries naming the specific methods, agents, assays or models it studies
+    minimal      1 query of its 2-3 most essential words
+    synonym      1 query using synonyms, abbreviations or older names for the same concepts
+- Keep each query inside its subtopic but tied to the review topic, so the results stay relevant.
+- Read the SUBTOPICS coverage counts: a subtopic whose queries now add few new papers is covered; a
+  subtopic with few papers is where the next queries pay off most.

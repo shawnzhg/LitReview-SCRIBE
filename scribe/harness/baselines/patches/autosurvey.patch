@@ -1,0 +1,16 @@
+diff --git a/src/database.py b/src/database.py
+index fb77356..08d47e8 100644
+--- a/src/database.py
++++ b/src/database.py
+@@ -14,9 +14,9 @@ class database():
+ 
+     def __init__(self, db_path, embedding_model) -> None:
+         
+-        self.embedding_model = SentenceTransformer(embedding_model, trust_remote_code=True)
++        self.embedding_model = SentenceTransformer(embedding_model, trust_remote_code=True, device=os.environ.get('AUTOSURVEY_DEVICE'))
+ 
+-        self.embedding_model.to(torch.device('cuda'))
++        self.embedding_model.to(torch.device(os.environ.get('AUTOSURVEY_DEVICE', 'cuda')))
+ 
+         self.db = TinyDB(f'{db_path}/arxiv_paper_db.json')
+         self.table = self.db.table('cs_paper_info')

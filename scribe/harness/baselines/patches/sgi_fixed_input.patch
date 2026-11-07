@@ -1,0 +1,289 @@
+diff --git a/config.json b/config.json
+index 4efa3d4..3a9489e 100644
+--- a/config.json
++++ b/config.json
+@@ -12,19 +12,19 @@
+   },
+ 
+   "llm_service": {
+-    "endpoint": "https://api.openai.com/v1",
+-    "api_key": "YOUR_OPENAI_API_KEY",
+-    "model": "gpt-4o-mini-2024-07-18"
++    "endpoint": "http://localhost:30002/v1",
++    "api_key": "dummy",
++    "model": "Qwen3.5-9B"
+   },
+ 
+   "embedding": {
+-    "model_name": "BAAI/bge-small-en-v1.5",
++    "model_name": "MODELS_DIR/bge-small-en-v1.5",
+     "device": "cpu",
+     "normalize_embeddings": true
+   },
+ 
+   "reranker": {
+-    "model_name": "BAAI/bge-reranker-base"
++    "model_name": "MODELS_DIR/bge-reranker-base"
+   },
+ 
+   "citation_trace": true,
+diff --git a/surveygen_i/nodes/preprocessing/search_node.py b/surveygen_i/nodes/preprocessing/search_node.py
+index eb3ddda..76a4bdc 100644
+--- a/surveygen_i/nodes/preprocessing/search_node.py
++++ b/surveygen_i/nodes/preprocessing/search_node.py
+@@ -12,6 +12,11 @@ from surveygen_i.tools.semantic_scholar import AdvancedBasicSearch
+ from surveygen_i.tools.paper_download import PDFDownloader
+ from surveygen_i.tools.prompts import load_prompt
+ from surveygen_i.tools.llm_tools import call_llm
++
++
++def _tag_filename(tag):
++    return tag.replace("::", "_").replace(os.sep, "_")
++
+ from surveygen_i.tools.json_utils import parse_json
+ from surveygen_i.tools.log_utils import log_step
+ 
+@@ -181,7 +186,7 @@ async def search_node(state, llm_service):
+     csv_dir = os.path.join(state["output_base_dir"], "csvs")
+     os.makedirs(csv_dir, exist_ok=True)
+     searcher.save_to_csv(
+-        results, os.path.join(csv_dir, f"papers_raw_{tag.replace('::', '_')}.csv")
++        results, os.path.join(csv_dir, f"papers_raw_{_tag_filename(tag)}.csv")
+     )
+ 
+     # Save unique bibtex entries into the master .bib (ACM-style pathing)
+@@ -267,7 +272,7 @@ async def search_node(state, llm_service):
+ 
+     # Save scored results to CSV
+     csv_path = os.path.join(
+-        state["output_base_dir"], "csvs", f"papers_scored_{tag.replace('::', '_')}.csv"
++        state["output_base_dir"], "csvs", f"papers_scored_{_tag_filename(tag)}.csv"
+     )
+     df_scored.to_csv(csv_path, index=False)
+     log_step(
+@@ -322,7 +327,7 @@ async def search_node(state, llm_service):
+     csv_dir = os.path.join(state["output_base_dir"], "csvs")
+     os.makedirs(csv_dir, exist_ok=True)
+     filtered_df.to_csv(
+-        os.path.join(csv_dir, f"filtered_{tag.replace('::', '_')}.csv"), index=False
++        os.path.join(csv_dir, f"filtered_{_tag_filename(tag)}.csv"), index=False
+     )
+     log_step(
+         state,
+@@ -344,7 +349,7 @@ async def search_node(state, llm_service):
+             save_dir=pdf_dir,
+             arxiv_only=state.get("arxiv_only", False)
+         )
+-        temp_csv = os.path.join(csv_dir, f"papers_download_input_{tag.replace('::', '_')}.csv")
++        temp_csv = os.path.join(csv_dir, f"papers_download_input_{_tag_filename(tag)}.csv")
+         filtered_df.to_csv(temp_csv, index=False)
+ 
+         download_result_df = await downloader.process_csv(temp_csv)
+@@ -369,7 +374,7 @@ async def search_node(state, llm_service):
+     state["filtered_sets"][tag] = final_records
+ 
+     merged_df.to_csv(
+-        os.path.join(csv_dir, f"papers_final_{tag.replace('::', '_')}.csv"), index=False
++        os.path.join(csv_dir, f"papers_final_{_tag_filename(tag)}.csv"), index=False
+     )
+     log_step(
+         state,
+@@ -511,7 +516,7 @@ async def relevance_scoring_async(
+     csv_dir = os.path.join(state["output_base_dir"], "csvs")
+     state.setdefault("relevance_scores_sets", {})[tag] = scored
+     pd.DataFrame(scored).to_csv(
+-        os.path.join(csv_dir, f"papers_scored_{tag.replace('::', '_')}.csv"), index=False
++        os.path.join(csv_dir, f"papers_scored_{_tag_filename(tag)}.csv"), index=False
+     )
+ 
+     return scored
+diff --git a/surveygen_i/nodes/writing/write_subsection_rag_node.py b/surveygen_i/nodes/writing/write_subsection_rag_node.py
+index c6d05c3..ee5ac72 100644
+--- a/surveygen_i/nodes/writing/write_subsection_rag_node.py
++++ b/surveygen_i/nodes/writing/write_subsection_rag_node.py
+@@ -1,5 +1,6 @@
+ import os
+ import json
++import re
+ import asyncio
+ from typing import List, Dict, Any
+ 
+@@ -64,7 +65,7 @@ async def write_subsection_node(state: dict, llm_service: Any, embedding, rerank
+     full_memory = state.get("subsection_contents", {})  # keys: Section::Subsection
+     all_subsections = extract_subsection_info(state["survey_outline"])
+ 
+-    debug_memory_dir = os.path.join(state["output_base_dir"], "debug", "memory", key.replace("::", "__"))
++    debug_memory_dir = os.path.join(state["output_base_dir"], "debug", "memory", re.sub(r"[/\\]+", "_", key.replace("::", "__")))
+ 
+     # Retrieve relevant vectorstores (global + local if present)
+     subset_paths = {
+@@ -101,7 +102,8 @@ async def write_subsection_node(state: dict, llm_service: Any, embedding, rerank
+     # Persist enriched RAG for inspection
+     debug_dir = os.path.join(state["output_base_dir"], "debug", "rag_contexts")
+     os.makedirs(debug_dir, exist_ok=True)
+-    with open(os.path.join(debug_dir, f"enriched_rag_{tag_local}.md"), "w", encoding="utf-8") as f:
++    _erag = "enriched_rag_" + re.sub(r"[/\\]+", "_", tag_local) + ".md"
++    with open(os.path.join(debug_dir, _erag), "w", encoding="utf-8") as f:
+         f.write(final_rag_context)
+ 
+     # ==================== STEP 2: Structure Generation =====================
+@@ -126,7 +128,7 @@ async def write_subsection_node(state: dict, llm_service: Any, embedding, rerank
+ 
+     # === Step 2: One-pass full subsection generation with Best-of-N ===
+     subsection_debug_dir = os.path.join(
+-        state["output_base_dir"], "debug", "subsection_outputs", key.replace("::", "__")
++        state["output_base_dir"], "debug", "subsection_outputs", re.sub(r"[/\\]+", "_", key.replace("::", "__"))
+     )
+     os.makedirs(subsection_debug_dir, exist_ok=True)
+ 
+@@ -166,6 +168,7 @@ async def write_subsection_node(state: dict, llm_service: Any, embedding, rerank
+ 
+     # Save selected best draft
+     final_path = os.path.join(subsection_debug_dir, "subsection_written.md")
++    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+     with open(final_path, "w", encoding="utf-8") as f:
+         f.write(best.strip())
+     final_response = best.strip()
+diff --git a/surveygen_i/tools/llm_service.py b/surveygen_i/tools/llm_service.py
+index 17cd8ac..7dd08b1 100644
+--- a/surveygen_i/tools/llm_service.py
++++ b/surveygen_i/tools/llm_service.py
+@@ -44,11 +44,10 @@ class OllamaLlmService:
+         
+ class LlmServiceAsync:
+     def __init__(self, api_key,model: str = "gpt-4o-mini-2024-07-18"):
+-        self.api_key = api_key
+-        self.client = AsyncOpenAI(api_key=self.api_key)
+-
+-        #self.client = openai.OpenAI(base_url=endpoint,api_key=api_key)
+-        self.model = model
++        self.api_key = os.environ.get("LOCAL_LLM_KEY", api_key or "dummy")
++        base_url = os.environ.get("LOCAL_LLM_URL", "http://localhost:30002/v1")
++        self.client = AsyncOpenAI(api_key=self.api_key, base_url=base_url)
++        self.model = os.environ.get("LOCAL_LLM_MODEL", model)
+ 
+ 
+     async def ask(self, prompt: str, mode: str = "default"):
+@@ -60,21 +59,22 @@ class LlmServiceAsync:
+             system_prompt = "You are an academic assistant."
+             temperature = 0
+ 
+-        response = await self.client.responses.create(
++        response = await self.client.chat.completions.create(
+             model=self.model,
+-            instructions=system_prompt,
++            messages=[
++                {"role": "system", "content": system_prompt},
++                {"role": "user", "content": prompt},
++            ],
+             temperature=temperature,
+-            input=prompt
+         )
+-        return response
++        return response.choices[0].message.content.strip()
+ 
+ class LlmService:
+     def __init__(self, api_key,model: str = "gpt-4o-mini-2024-07-18"):
+-        self.api_key = api_key
+-        self.client = OpenAI(api_key=self.api_key)
+-
+-        #self.client = openai.OpenAI(base_url=endpoint,api_key=api_key)
+-        self.model = model
++        self.api_key = os.environ.get("LOCAL_LLM_KEY", api_key or "dummy")
++        base_url = os.environ.get("LOCAL_LLM_URL", "http://localhost:30002/v1")
++        self.client = OpenAI(api_key=self.api_key, base_url=base_url)
++        self.model = os.environ.get("LOCAL_LLM_MODEL", model)
+ 
+     # def ask(self, prompt: str, mode: str = "default"):
+ 
+diff --git a/surveygen_i/tools/match_citations.py b/surveygen_i/tools/match_citations.py
+index 60de875..be273f1 100644
+--- a/surveygen_i/tools/match_citations.py
++++ b/surveygen_i/tools/match_citations.py
+@@ -1,6 +1,9 @@
++import os
+ import random
+ from typing import Optional
+ 
++S2_BASE = os.environ.get("S2_BASE_URL", "https://api.semanticscholar.org/graph/v1")
++
+ from surveygen_i.tools.extract_text_from_pdf import extract_text_from_pdf
+ 
+ from surveygen_i.tools.paper_download import _USER_AGENTS
+@@ -110,7 +113,7 @@ def post_with_retry(url, headers, params=None, json=None, timeout=15):
+ 
+ 
+ def get_references(paper_id: str) -> List[Dict]:
+-    url = f"https://api.semanticscholar.org/graph/v1/paper/{paper_id}/references"
++    url = f"{S2_BASE}/paper/{paper_id}/references"
+     fields = "paperId,title,url,openAccessPdf,externalIds,authors,citationCount,abstract,referenceCount,year,venue,publicationTypes,fieldsOfStudy,citationStyles"
+     headers = _random_headers()
+     params = {"fields": fields}
+@@ -133,7 +136,7 @@ def get_references(paper_id: str) -> List[Dict]:
+ 
+     if ids_missing_abstract:
+         # print(f"{len(ids_missing_abstract)} references missing abstract — fetching via batch API...")
+-        bulk_url = "https://api.semanticscholar.org/graph/v1/paper/batch"
++        bulk_url = f"{S2_BASE}/paper/batch"
+         for i in range(0, len(ids_missing_abstract), 50):
+             batch_ids = ids_missing_abstract[i:i + 50]
+             payload = {"ids": batch_ids}
+diff --git a/surveygen_i/tools/semantic_scholar.py b/surveygen_i/tools/semantic_scholar.py
+index 8ec2745..6f5b179 100644
+--- a/surveygen_i/tools/semantic_scholar.py
++++ b/surveygen_i/tools/semantic_scholar.py
+@@ -4,10 +4,11 @@ import pandas as pd
+ import torch
+ from sentence_transformers import SentenceTransformer, util
+ 
+-from surveygen_i.tools.match_citations import _random_headers
++from surveygen_i.tools.match_citations import _random_headers, S2_BASE
+ from surveygen_i.tools.llm_service import LlmService
+ from tenacity import retry, retry_if_exception_type, stop_never, wait_random_exponential
+ from typing import List, Dict
++import os
+ import re
+ import requests
+ import time
+@@ -23,7 +24,7 @@ class SemanticScholarSearch:
+ 
+     def search_papers(self, keyword, start_year=2022, end_year=2025, limit=50):
+         fields = "paperId,title,url,openAccessPdf,externalIds,authors,citationCount,abstract,referenceCount,year,venue,publicationTypes,fieldsOfStudy,citationStyles"
+-        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={keyword}&fields={fields}&limit={limit}"
++        url = f"{S2_BASE}/paper/search?query={keyword}&fields={fields}&limit={limit}"
+ 
+         wait_time = 1
+         max_wait_time = 60
+@@ -100,7 +101,7 @@ class SemanticScholarSearch:
+ 
+ class CitationAnalysis:
+     def __init__(self):
+-        self.base_url = "https://api.semanticscholar.org/graph/v1/paper"
++        self.base_url = f"{S2_BASE}/paper"
+ 
+     def extract_pdf_url(self, paper):
+         if not paper:
+@@ -132,7 +133,7 @@ class CitationAnalysis:
+         Will retry indefinitely on request failures.
+         """
+ 
+-        url = "https://api.semanticscholar.org/graph/v1/paper/batch"
++        url = f"{S2_BASE}/paper/batch"
+         results = {}
+ 
+         for i in range(0, len(ids), 50):  # API batch limit is 100, we use 50 for safety
+@@ -428,6 +429,14 @@ class AdvancedBasicSearch:
+ 
+     def save_to_csv(self, papers, filename="search_results.csv"):
+         df = pd.DataFrame(papers)
++        parent = os.path.dirname(filename)
++        if parent and not os.path.isdir(parent):
++            d = parent
++            while d and not os.path.isdir(d):
++                d = os.path.dirname(d)
++            tail = filename[len(d):].lstrip(os.sep) if d else filename
++            flat = tail.replace(os.sep, "_")
++            filename = os.path.join(d, flat) if d else flat
+         df.to_csv(filename, index=False, encoding="utf-8")
+ 
+ 
